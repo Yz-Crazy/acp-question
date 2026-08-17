@@ -13,7 +13,7 @@
     {
       "binding": "DB",
       "database_name": "acp-question",
-      "database_id": "${D1_DATABASE_ID}",
+      "database_id": "3323e429-a72d-4a89-994b-dc9f953ad550",
       "migrations_dir": "migrations"
     }
   ]
