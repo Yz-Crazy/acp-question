@@ -1,21 +1,23 @@
-import { AlertTriangle, BookMarked, BookOpenCheck, CheckCircle2, FileJson, Pencil, Plus, RefreshCw, Save, Search, UploadCloud, UserCheck, Users, UserX, X } from "lucide-react";
+import { AlertTriangle, BookMarked, BookOpenCheck, Check, CheckCircle2, Copy, FileCheck2, FileJson, KeyRound, Pencil, Plus, RefreshCw, Save, Search, UploadCloud, UserCheck, Users, UserX, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { api, queryString } from "../api";
 import { useAuth } from "../auth";
 import { ErrorState, LoadingState } from "../components/States";
 import { parseQuestionSource } from "../lib/questionImport";
-import type { AdminQuestion, AdminUser } from "../types";
+import type { AdminQuestion, AdminUser, MockExamTemplate, RegistrationCode } from "../types";
 
 export function AdminPage() {
-  const [tab, setTab] = useState<"questions" | "users">("questions");
+  const [tab, setTab] = useState<"questions" | "mock" | "codes" | "users">("questions");
   return (
     <div className="page admin-page">
-      <header className="page-heading"><div><p>题库、用户与权限</p><h1>系统管理</h1></div></header>
+      <header className="page-heading"><div><p>题库、套卷、注册码与用户权限</p><h1>系统管理</h1></div></header>
       <div className="segmented admin-tabs" aria-label="管理内容">
         <button type="button" className={tab === "questions" ? "active" : ""} onClick={() => setTab("questions")}><BookOpenCheck size={16} />题库管理</button>
+        <button type="button" className={tab === "mock" ? "active" : ""} onClick={() => setTab("mock")}><FileCheck2 size={16} />模拟套卷</button>
+        <button type="button" className={tab === "codes" ? "active" : ""} onClick={() => setTab("codes")}><KeyRound size={16} />注册码</button>
         <button type="button" className={tab === "users" ? "active" : ""} onClick={() => setTab("users")}><Users size={16} />用户管理</button>
       </div>
-      {tab === "questions" ? <QuestionManagement /> : <UserManagement />}
+      {tab === "questions" ? <QuestionManagement /> : tab === "mock" ? <MockTemplateManagement /> : tab === "codes" ? <RegistrationCodeManagement /> : <UserManagement />}
     </div>
   );
 }
@@ -150,6 +152,121 @@ function QuestionEditor({ question, onClose, onSaved }: { question: AdminQuestio
     {error && <p className="form-error" role="alert">{error}</p>}
     <footer><button className="button secondary" type="button" onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={saving}><Save size={17} />{saving ? "保存中" : "保存题目"}</button></footer>
   </form></section></div>;
+}
+
+function MockTemplateManagement() {
+  const [templates, setTemplates] = useState<MockExamTemplate[]>([]);
+  const [slot, setSlot] = useState(1);
+  const [title, setTitle] = useState("ACP 模拟题第 1 套");
+  const [pending, setPending] = useState<unknown[]>([]);
+  const [fileName, setFileName] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async (clearMessage = true) => {
+    setLoading(true);
+    if (clearMessage) setMessage("");
+    try {
+      const response = await api<{ templates: MockExamTemplate[] }>("/api/admin/mock-templates");
+      setTemplates(response.templates);
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : "套卷加载失败"); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  function chooseSlot(nextSlot: number) {
+    setSlot(nextSlot);
+    setTitle(templates.find((item) => item.slot === nextSlot)?.title ?? `ACP 模拟题第 ${nextSlot} 套`);
+  }
+
+  async function chooseFile(file?: File) {
+    if (!file) return;
+    setMessage("");
+    try {
+      const parsed = parseQuestionSource(await file.text());
+      const counts = parsed.reduce<{ single: number; multiple: number }>((current, value) => {
+        const record = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+        const type = String(record.t ?? record.type ?? "");
+        if (type === "单选题" || type === "single") current.single += 1;
+        if (type === "多选题" || type === "multiple") current.multiple += 1;
+        return current;
+      }, { single: 0, multiple: 0 });
+      if (parsed.length !== 75 || counts.single !== 50 || counts.multiple !== 25) {
+        throw new Error(`套卷必须包含 50 道单选和 25 道多选，当前识别 ${counts.single} 道单选、${counts.multiple} 道多选`);
+      }
+      setPending(parsed); setFileName(file.name);
+    } catch (reason) {
+      setPending([]); setFileName("");
+      setMessage(reason instanceof Error ? reason.message : "套卷文件解析失败");
+    }
+  }
+
+  async function upload() {
+    if (!pending.length || !title.trim()) return;
+    setUploading(true); setMessage("");
+    try {
+      await api(`/api/admin/mock-templates/${slot}`, {
+        method: "PUT", body: JSON.stringify({ title, questions: pending })
+      });
+      setMessage(`第 ${slot} 套模拟题已更新`); setPending([]); setFileName("");
+      await load(false);
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : "套卷上传失败"); }
+    finally { setUploading(false); }
+  }
+
+  return <>
+    <section className="admin-import-band mock-template-upload">
+      <div className="import-copy"><span className="admin-section-icon"><UploadCloud size={22} /></span><span><strong>上传固定模拟套卷</strong><small>每套必须包含 50 道单选题和 25 道多选题，文件字段与题库导入格式一致</small></span></div>
+      <div className="mock-upload-fields"><div><label className="field-label" htmlFor="mock-slot">套卷编号</label><select className="text-input" id="mock-slot" value={slot} onChange={(event) => chooseSlot(Number(event.target.value))}>{[1, 2, 3, 4, 5, 6].map((value) => <option key={value} value={value}>第 {value} 套</option>)}</select></div><div><label className="field-label" htmlFor="mock-title">套卷名称</label><input className="text-input" id="mock-title" value={title} maxLength={80} onChange={(event) => setTitle(event.target.value)} /></div></div>
+      <div className="import-actions"><label className="button secondary small file-button"><FileJson size={16} />选择套卷文件<input type="file" accept=".json,.md,.txt,application/json" onChange={(event) => void chooseFile(event.target.files?.[0])} /></label>{pending.length > 0 && <button className="button primary small" type="button" onClick={() => void upload()} disabled={uploading || !title.trim()}>{uploading ? "上传中" : `更新第 ${slot} 套`}</button>}</div>
+      {pending.length > 0 && <div className="import-preview"><span><CheckCircle2 size={16} /><strong>{fileName}</strong> · 75 道题已校验</span></div>}
+      {message && <p className={message.includes("已更新") ? "form-success" : "form-error"} role="status">{message}</p>}
+    </section>
+    <section className="section-block admin-list-section"><div className="section-heading"><div><p className="eyebrow">固定套卷</p><h2>6 个模拟题槽位</h2></div><button className="icon-button" type="button" title="刷新套卷" onClick={() => void load()}><RefreshCw size={18} /></button></div>{loading ? <LoadingState label="正在加载模拟套卷" /> : <div className="admin-template-list">{[1, 2, 3, 4, 5, 6].map((value) => {
+      const template = templates.find((item) => item.slot === value);
+      return <button type="button" key={value} className={slot === value ? "selected" : ""} onClick={() => chooseSlot(value)}><span>{String(value).padStart(2, "0")}</span><span><strong>{template?.title ?? `第 ${value} 套尚未上传`}</strong><small>{template ? `75 道题 · 更新于 ${new Date(template.updatedAt).toLocaleDateString("zh-CN")}` : "选择此槽位后上传套卷文件"}</small></span><span className={`question-state ${template ? "active" : ""}`}>{template ? "已上传" : "空槽位"}</span></button>;
+    })}</div>}</section>
+  </>;
+}
+
+function RegistrationCodeManagement() {
+  const [codes, setCodes] = useState<RegistrationCode[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [copied, setCopied] = useState("");
+  const [error, setError] = useState("");
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try { setCodes((await api<{ registrationCodes: RegistrationCode[] }>("/api/admin/registration-codes")).registrationCodes); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "注册码加载失败"); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  async function createCode() {
+    setCreating(true); setError("");
+    try {
+      const response = await api<{ registrationCode: RegistrationCode }>("/api/admin/registration-codes", { method: "POST" });
+      setCodes((current) => [response.registrationCode, ...current]);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "注册码生成失败"); }
+    finally { setCreating(false); }
+  }
+
+  async function copy(code: string) {
+    await navigator.clipboard.writeText(code);
+    setCopied(code); window.setTimeout(() => setCopied(""), 1500);
+  }
+
+  return <section className="section-block admin-list-section registration-code-management">
+    <div className="section-heading"><div><p className="eyebrow">注册权限</p><h2>注册码</h2></div><button className="button primary small" type="button" onClick={() => void createCode()} disabled={creating}><Plus size={16} />{creating ? "生成中" : "生成注册码"}</button></div>
+    <div className="admin-notice"><AlertTriangle size={16} /><span>只有管理员可以生成注册码；每个注册码仅能注册一个账户，有效期为 30 天。</span></div>
+    {error && <ErrorState message={error} retry={() => void load()} />}
+    {loading ? <LoadingState label="正在加载注册码" /> : <div className="invite-list">{codes.map((code) => {
+      const used = Boolean(code.disabled) || code.useCount >= code.maxUses;
+      return <div className="invite-row" key={code.code}><span className="invite-icon"><KeyRound size={18} /></span><span><strong>{code.code}</strong><small>{used ? "已使用" : `有效期至 ${new Date(code.expiresAt).toLocaleDateString("zh-CN")}`} · {code.createdBy}生成</small></span><button type="button" className="icon-button" title="复制注册码" disabled={used} onClick={() => void copy(code.code)}>{copied === code.code ? <Check size={18} /> : <Copy size={18} />}</button></div>;
+    })}{!codes.length && <p className="empty-inline">还没有注册码。</p>}</div>}
+  </section>;
 }
 
 function UserManagement() {

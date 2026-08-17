@@ -80,3 +80,61 @@ export interface AdminUser {
   accuracy: number;
   activeMistakes: number;
 }
+
+export interface MockExamTemplate {
+  id: string;
+  slot: number;
+  title: string;
+  questionCount: number;
+  singleCount: number;
+  multipleCount: number;
+  updatedAt: string;
+}
+
+export interface MockExamSummary {
+  id: string;
+  title: string;
+  source: "fixed" | "random";
+  status: "in_progress" | "submitted";
+  templateId: string | null;
+  durationSeconds: number;
+  remainingSeconds: number;
+  score: number | null;
+  passed: boolean | null;
+  wrongCount: number | null;
+  answeredCount: number;
+  markedCount: number;
+  startedAt: string;
+  updatedAt: string;
+  submittedAt: string | null;
+}
+
+export interface MockExamItem {
+  id: string;
+  position: number;
+  type: "single" | "multiple";
+  question: string;
+  options: Record<string, string>;
+  category: string;
+  selectedAnswers: string[];
+  marked: boolean;
+  correctAnswers?: string[];
+  correct?: boolean;
+  explanation?: string;
+  referenceUrl?: string | null;
+}
+
+export interface MockExamDetail extends MockExamSummary {
+  currentItemId: string | null;
+  currentSection: "single" | "multiple";
+}
+
+export interface RegistrationCode {
+  code: string;
+  maxUses: number;
+  useCount: number;
+  disabled: number;
+  expiresAt: string;
+  createdAt: string;
+  createdBy: string;
+}

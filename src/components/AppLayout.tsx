@@ -1,10 +1,11 @@
-import { BookOpenCheck, CircleUserRound, House, LogOut, Search, Settings2, TriangleAlert } from "lucide-react";
+import { BookOpenCheck, CircleUserRound, FileCheck2, House, LogOut, Search, Settings2, TriangleAlert } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth";
 
 const navItems = [
   { to: "/", label: "首页", icon: House, end: true },
   { to: "/library", label: "题库", icon: BookOpenCheck },
+  { to: "/mock-exams", label: "模拟", icon: FileCheck2 },
   { to: "/wrong", label: "错题", icon: TriangleAlert },
   { to: "/search", label: "搜索", icon: Search },
   { to: "/profile", label: "我的", icon: CircleUserRound }

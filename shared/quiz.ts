@@ -17,6 +17,17 @@ export function normalizeQuestionType(value: string): QuestionType | null {
   return null;
 }
 
+export function scoreMockExam(items: Array<{ type: QuestionType; submitted: unknown; expected: unknown }>) {
+  let score = 0;
+  let correctCount = 0;
+  for (const item of items) {
+    if (!isAnswerCorrect(item.submitted, item.expected)) continue;
+    correctCount += 1;
+    score += item.type === "single" ? 1 : 2;
+  }
+  return { score, correctCount, wrongCount: items.length - correctCount, passed: score >= 80 };
+}
+
 export function nextReviewDate(correctStreak: number, now = new Date()): string {
   const intervals = [1, 3, 7, 14, 30];
   const days = intervals[Math.min(Math.max(correctStreak, 0), intervals.length - 1)];

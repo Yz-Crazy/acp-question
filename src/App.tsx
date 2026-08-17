@@ -5,6 +5,8 @@ import { AuthPage } from "./pages/AuthPage";
 import { AdminPage } from "./pages/AdminPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LibraryPage } from "./pages/LibraryPage";
+import { MockExamPage } from "./pages/MockExamPage";
+import { MockExamsPage } from "./pages/MockExamsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { QuizPage } from "./pages/QuizPage";
 import { SearchPage } from "./pages/SearchPage";
@@ -29,11 +31,13 @@ export function App() {
         <Route index element={<DashboardPage />} />
         <Route path="library" element={<LibraryPage />} />
         <Route path="wrong" element={<WrongPage />} />
+        <Route path="mock-exams" element={<MockExamsPage />} />
         <Route path="search" element={<SearchPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="admin" element={user.role === "admin" ? <AdminPage /> : <Navigate to="/" replace />} />
       </Route>
       <Route path="quiz" element={<QuizPage />} />
+      <Route path="mock-exams/:examId" element={<MockExamPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -7,7 +7,7 @@ export function AuthPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
+  const [registrationCode, setRegistrationCode] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -17,7 +17,7 @@ export function AuthPage() {
     setSubmitting(true);
     try {
       if (mode === "login") await login(username, password);
-      else await register(username, password, inviteCode);
+      else await register(username, password, registrationCode);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "操作失败，请稍后重试");
     } finally {
@@ -47,15 +47,15 @@ export function AuthPage() {
           </div>
           <div className="form-heading">
             <h2>{mode === "login" ? "欢迎回来" : "创建学习账户"}</h2>
-            <p>{mode === "login" ? "继续上次的学习进度" : "注册需要一个有效邀请码"}</p>
+            <p>{mode === "login" ? "继续上次的学习进度" : "注册需要一个有效注册码"}</p>
           </div>
           <label className="field-label" htmlFor="username">用户名</label>
           <div className="input-with-icon"><UserRound size={18} /><input id="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="3-20 位字符" required /></div>
           <label className="field-label" htmlFor="password">密码</label>
           <div className="input-with-icon"><LockKeyhole size={18} /><input id="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="至少 8 位" required /></div>
           {mode === "register" && <>
-            <label className="field-label" htmlFor="invite">邀请码</label>
-            <div className="input-with-icon"><KeyRound size={18} /><input id="invite" value={inviteCode} onChange={(event) => setInviteCode(event.target.value.toUpperCase())} placeholder="ACP-XXXXX-XXXXX" required /></div>
+            <label className="field-label" htmlFor="registration-code">注册码</label>
+            <div className="input-with-icon"><KeyRound size={18} /><input id="registration-code" value={registrationCode} onChange={(event) => setRegistrationCode(event.target.value.toUpperCase())} placeholder="ACP-XXXXX-XXXXX" required /></div>
           </>}
           {error && <p className="form-error" role="alert">{error}</p>}
           <button className="button primary submit-button" type="submit" disabled={submitting}>
