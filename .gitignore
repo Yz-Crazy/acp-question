@@ -4,4 +4,7 @@ node_modules/
 dist/
 .wrangler/
 .dev.vars
+.env
+.env.*
+.wrangler.generated.*.jsonc
 *.log

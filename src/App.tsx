@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth";
 import { AppLayout } from "./components/AppLayout";
 import { AuthPage } from "./pages/AuthPage";
+import { AdminPage } from "./pages/AdminPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { ProfilePage } from "./pages/ProfilePage";
@@ -30,6 +31,7 @@ export function App() {
         <Route path="wrong" element={<WrongPage />} />
         <Route path="search" element={<SearchPage />} />
         <Route path="profile" element={<ProfilePage />} />
+        <Route path="admin" element={user.role === "admin" ? <AdminPage /> : <Navigate to="/" replace />} />
       </Route>
       <Route path="quiz" element={<QuizPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />

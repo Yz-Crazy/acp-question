@@ -1,4 +1,4 @@
-import { BookOpenCheck, CircleUserRound, House, Search, TriangleAlert } from "lucide-react";
+import { BookOpenCheck, CircleUserRound, House, Search, Settings2, TriangleAlert } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth";
 
@@ -12,6 +12,9 @@ const navItems = [
 
 export function AppLayout() {
   const { user } = useAuth();
+  const desktopNavItems = user?.role === "admin"
+    ? [...navItems, { to: "/admin", label: "管理", icon: Settings2 }]
+    : navItems;
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -20,7 +23,7 @@ export function AppLayout() {
           <span><strong>题序</strong><small>ACP 练习台</small></span>
         </div>
         <nav className="side-nav" aria-label="主导航">
-          {navItems.map(({ to, label, icon: Icon, end }) => (
+          {desktopNavItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end}>
               <Icon size={19} strokeWidth={1.9} />
               <span>{label}</span>

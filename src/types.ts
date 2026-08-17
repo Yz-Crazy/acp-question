@@ -51,3 +51,30 @@ export interface AnswerResult {
   referenceUrl: string | null;
   mistakeActive: boolean;
 }
+
+export interface AdminQuestion {
+  id: string;
+  number: number | null;
+  type: "single" | "multiple";
+  question: string;
+  options: Record<string, string>;
+  correctAnswers: string[];
+  explanation: string;
+  category: string;
+  core: boolean;
+  referenceUrl: string | null;
+  active: boolean;
+  updatedAt: string | null;
+}
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  role: "admin" | "member";
+  disabled: boolean;
+  createdAt: string;
+  attempts: number;
+  practiced: number;
+  accuracy: number;
+  activeMistakes: number;
+}
