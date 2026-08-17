@@ -26,13 +26,18 @@ const templatePath = join(process.cwd(), "wrangler.jsonc");
 const generatedPath = join(process.cwd(), `.wrangler.generated.${process.pid}.jsonc`);
 const placeholder = "${D1_DATABASE_ID}";
 const template = readFileSync(templatePath, "utf8");
-if (!template.includes(placeholder)) {
-  console.error(`wrangler.jsonc must contain the ${placeholder} placeholder.`);
+const databaseIdPattern = /("database_id"\s*:\s*")[^"]*(")/;
+if (!template.includes(placeholder) && !databaseIdPattern.test(template)) {
+  console.error("wrangler.jsonc must contain a database_id entry.");
   process.exit(1);
 }
 
+const generatedConfig = template.includes(placeholder)
+  ? template.replaceAll(placeholder, databaseId)
+  : template.replace(databaseIdPattern, `$1${databaseId}$2`);
+
 const executable = join(process.cwd(), "node_modules", ".bin", process.platform === "win32" ? "wrangler.cmd" : "wrangler");
-writeFileSync(generatedPath, template.replaceAll(placeholder, databaseId));
+writeFileSync(generatedPath, generatedConfig);
 try {
   const result = spawnSync(executable, [...args, "--config", generatedPath], {
     cwd: process.cwd(),

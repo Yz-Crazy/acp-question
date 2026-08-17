@@ -55,7 +55,7 @@ npx wrangler d1 create acp-question
 export D1_DATABASE_ID="你的 D1 database_id"
 ```
 
-GitHub Actions、Cloudflare Builds 等 CI 环境中也需要配置同名变量，并将部署命令设置为 `npm run deploy`。Wrangler 不会直接展开配置文件里的环境变量；项目脚本会校验该值，并临时替换 `wrangler.jsonc` 中的 `${D1_DATABASE_ID}`，生成的配置不会提交或保留在工作区。
+GitHub Actions、Cloudflare Builds 等 CI 环境中也需要配置同名变量。Cloudflare Builds 的构建命令设置为 `npm run build`，部署命令设置为 `npm run db:migrate:remote && node scripts/run-wrangler.mjs deploy`。项目脚本会校验该值，并用它覆盖临时配置中的 `database_id`；配置文件中无论是 `${D1_DATABASE_ID}` 占位符还是已有 UUID 都可以正常部署，生成的配置不会提交或保留在工作区。
 
 3. 设置一次性的初始化令牌：
 
