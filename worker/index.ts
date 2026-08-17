@@ -39,6 +39,7 @@ class ApiError extends Error {
 const encoder = new TextEncoder();
 const SESSION_COOKIE = "aq_session";
 const SESSION_DAYS = 30;
+const PASSWORD_HASH_ITERATIONS = 100_000;
 
 function apiJson(data: unknown, status = 200, headers: HeadersInit = {}): Response {
   return Response.json(data, {
@@ -91,7 +92,7 @@ async function sha256(value: string): Promise<string> {
 async function hashPassword(password: string, salt: string): Promise<string> {
   const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt: encoder.encode(salt), iterations: 120_000 },
+    { name: "PBKDF2", hash: "SHA-256", salt: encoder.encode(salt), iterations: PASSWORD_HASH_ITERATIONS },
     key,
     256
   );
