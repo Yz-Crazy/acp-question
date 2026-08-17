@@ -1,0 +1,37 @@
+{
+  "name": "acp-question",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c yellow,cyan \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "wrangler dev --port 8787",
+    "dev:web": "vite --host 0.0.0.0 --port 5173",
+    "build": "tsc -b && vite build",
+    "deploy": "npm run build && wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply acp-question --local",
+    "db:migrate:remote": "wrangler d1 migrations apply acp-question --remote",
+    "db:seed:local": "wrangler d1 execute acp-question --local --file=./seed.local.sql",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.1.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "playwright": "^1.62.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8",
+    "wrangler": "^4.28.1"
+  }
+}

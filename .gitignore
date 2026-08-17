@@ -1,0 +1,7 @@
+lizi.md
+.DS_Store
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+*.log
