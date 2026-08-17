@@ -9,6 +9,7 @@ interface Env {
 interface User {
   id: string;
   username: string;
+  nickname: string;
   role: "admin" | "member";
 }
 
@@ -111,7 +112,7 @@ async function getUser(request: Request, env: Env): Promise<User | null> {
   if (!token) return null;
   const tokenHash = await sha256(token);
   return env.DB.prepare(
-    `SELECT u.id, u.username, u.role
+    `SELECT u.id, u.username, u.nickname, u.role
      FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ? AND s.expires_at > datetime('now') AND u.disabled = 0`
   ).bind(tokenHash).first<User>();
@@ -144,6 +145,15 @@ function validatePassword(passwordRaw: unknown): string {
   return password;
 }
 
+function validateNickname(nicknameRaw: unknown): string {
+  const nickname = typeof nicknameRaw === "string" ? nicknameRaw.trim() : "";
+  const length = Array.from(nickname).length;
+  if (length < 1 || length > 30 || /[\u0000-\u001f\u007f]/.test(nickname)) {
+    throw new ApiError(400, "昵称需为 1-30 个字符且不能包含控制字符");
+  }
+  return nickname;
+}
+
 function validateCredentials(usernameRaw: unknown, passwordRaw: unknown): { username: string; password: string } {
   const username = validateUsername(usernameRaw);
   const password = validatePassword(passwordRaw);
@@ -169,8 +179,8 @@ async function register(request: Request, env: Env): Promise<Response> {
   const passwordHash = await hashPassword(password, salt);
   try {
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO users (id, username, password_hash, password_salt, role) VALUES (?, ?, ?, ?, ?)")
-        .bind(userId, username, passwordHash, salt, count?.count === 0 ? "admin" : "member"),
+      env.DB.prepare("INSERT INTO users (id, username, nickname, password_hash, password_salt, role) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(userId, username, username, passwordHash, salt, count?.count === 0 ? "admin" : "member"),
       env.DB.prepare("INSERT INTO invite_redemptions (invite_id, user_id) VALUES (?, ?)").bind(invite.id, userId),
       env.DB.prepare("UPDATE invite_codes SET use_count = use_count + 1 WHERE id = ? AND use_count < max_uses")
         .bind(invite.id)
@@ -182,20 +192,20 @@ async function register(request: Request, env: Env): Promise<Response> {
     throw error;
   }
   const cookie = await createSession(request, env, userId);
-  return apiJson({ user: { id: userId, username, role: count?.count === 0 ? "admin" : "member" } }, 201, { "Set-Cookie": cookie });
+  return apiJson({ user: { id: userId, username, nickname: username, role: count?.count === 0 ? "admin" : "member" } }, 201, { "Set-Cookie": cookie });
 }
 
 async function login(request: Request, env: Env): Promise<Response> {
   const body = await readJson<{ username?: unknown; password?: unknown }>(request);
   const { username, password } = validateCredentials(body.username, body.password);
   const account = await env.DB.prepare(
-    "SELECT id, username, password_hash, password_salt, role, disabled FROM users WHERE username = ? COLLATE NOCASE"
+    "SELECT id, username, nickname, password_hash, password_salt, role, disabled FROM users WHERE username = ? COLLATE NOCASE"
   ).bind(username).first<User & { password_hash: string; password_salt: string; disabled: number }>();
   const calculated = await hashPassword(password, account?.password_salt ?? randomToken(16));
   if (!account || !constantTimeEqual(calculated, account.password_hash)) throw new ApiError(401, "用户名或密码不正确");
   if (account.disabled) throw new ApiError(403, "该账户已被管理员禁用");
   const cookie = await createSession(request, env, account.id);
-  return apiJson({ user: { id: account.id, username: account.username, role: account.role } }, 200, { "Set-Cookie": cookie });
+  return apiJson({ user: { id: account.id, username: account.username, nickname: account.nickname, role: account.role } }, 200, { "Set-Cookie": cookie });
 }
 
 async function logout(request: Request, env: Env): Promise<Response> {
@@ -232,15 +242,16 @@ async function bootstrapInvite(request: Request, env: Env): Promise<Response> {
 }
 
 async function updateAccount(request: Request, env: Env, user: User): Promise<Response> {
-  const body = await readJson<{ username?: unknown; currentPassword?: unknown; newPassword?: unknown }>(request);
-  const hasUsername = body.username !== undefined;
+  const body = await readJson<{ username?: unknown; nickname?: unknown; currentPassword?: unknown; newPassword?: unknown }>(request);
+  if (body.username !== undefined) throw new ApiError(400, "登录用户名不可修改");
+  const hasNickname = body.nickname !== undefined;
   const hasPassword = body.newPassword !== undefined;
-  if (!hasUsername && !hasPassword) throw new ApiError(400, "没有需要更新的账户信息");
+  if (!hasNickname && !hasPassword) throw new ApiError(400, "没有需要更新的账户信息");
 
-  const username = hasUsername ? validateUsername(body.username) : user.username;
+  const nickname = hasNickname ? validateNickname(body.nickname) : user.nickname;
   const statements: D1PreparedStatement[] = [];
-  if (username !== user.username) {
-    statements.push(env.DB.prepare("UPDATE users SET username = ? WHERE id = ?").bind(username, user.id));
+  if (nickname !== user.nickname) {
+    statements.push(env.DB.prepare("UPDATE users SET nickname = ? WHERE id = ?").bind(nickname, user.id));
   }
 
   if (hasPassword) {
@@ -267,13 +278,8 @@ async function updateAccount(request: Request, env: Env, user: User): Promise<Re
     }
   }
 
-  try {
-    if (statements.length) await env.DB.batch(statements);
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("UNIQUE")) throw new ApiError(409, "用户名已被使用");
-    throw error;
-  }
-  return apiJson({ user: { ...user, username }, passwordChanged: hasPassword });
+  if (statements.length) await env.DB.batch(statements);
+  return apiJson({ user: { ...user, nickname }, passwordChanged: hasPassword });
 }
 
 function requireAdmin(user: User): void {
@@ -479,12 +485,13 @@ async function getAdminUsers(request: Request, env: Env): Promise<Response> {
   const conditions: string[] = [];
   const values: unknown[] = [];
   if (search) {
-    conditions.push("u.username LIKE ? ESCAPE '\\'");
-    values.push(`%${escapeLike(search)}%`);
+    conditions.push("(u.username LIKE ? ESCAPE '\\' OR u.nickname LIKE ? ESCAPE '\\')");
+    const pattern = `%${escapeLike(search)}%`;
+    values.push(pattern, pattern);
   }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const rows = await env.DB.prepare(
-    `SELECT u.id, u.username, u.role, u.disabled, u.created_at AS createdAt,
+    `SELECT u.id, u.username, u.nickname, u.role, u.disabled, u.created_at AS createdAt,
       COUNT(a.id) AS attempts, COALESCE(SUM(a.is_correct), 0) AS correct,
       COUNT(DISTINCT a.question_id) AS practiced,
       COALESCE((SELECT SUM(m.active = 1) FROM mistakes m WHERE m.user_id = u.id), 0) AS activeMistakes
@@ -496,6 +503,7 @@ async function getAdminUsers(request: Request, env: Env): Promise<Response> {
     users: rows.results.map((row) => ({
       id: String(row.id),
       username: String(row.username),
+      nickname: String(row.nickname),
       role: row.role,
       disabled: Boolean(row.disabled),
       createdAt: row.createdAt,
@@ -511,7 +519,7 @@ async function getAdminUsers(request: Request, env: Env): Promise<Response> {
 async function updateAdminUser(request: Request, env: Env, admin: User, targetId: string): Promise<Response> {
   const body = await readJson<{ role?: unknown; disabled?: unknown }>(request);
   const target = await env.DB.prepare(
-    "SELECT id, username, role, disabled FROM users WHERE id = ?"
+    "SELECT id, username, nickname, role, disabled FROM users WHERE id = ?"
   ).bind(targetId).first<User & { disabled: number }>();
   if (!target) throw new ApiError(404, "用户不存在");
   const role = body.role === undefined ? target.role : body.role;
@@ -530,7 +538,7 @@ async function updateAdminUser(request: Request, env: Env, admin: User, targetId
   const statements = [env.DB.prepare("UPDATE users SET role = ?, disabled = ? WHERE id = ?").bind(role, disabled ? 1 : 0, target.id)];
   if (disabled) statements.push(env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(target.id));
   await env.DB.batch(statements);
-  return apiJson({ user: { id: target.id, username: target.username, role, disabled } });
+  return apiJson({ user: { id: target.id, username: target.username, nickname: target.nickname, role, disabled } });
 }
 
 function escapeLike(value: string): string {

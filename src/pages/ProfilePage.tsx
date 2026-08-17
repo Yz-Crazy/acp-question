@@ -15,7 +15,7 @@ export function ProfilePage() {
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState("");
-  const [username, setUsername] = useState(user?.username ?? "");
+  const [nickname, setNickname] = useState(user?.nickname ?? "");
   const [savingName, setSavingName] = useState(false);
   const [nameMessage, setNameMessage] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -32,7 +32,7 @@ export function ProfilePage() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "加载失败"); }
   }, []);
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { setUsername(user?.username ?? ""); }, [user?.username]);
+  useEffect(() => { setNickname(user?.nickname ?? ""); }, [user?.nickname]);
 
   async function createInvite() {
     setCreating(true); setError("");
@@ -49,13 +49,13 @@ export function ProfilePage() {
     window.setTimeout(() => setCopied(""), 1500);
   }
 
-  async function saveUsername(event: FormEvent) {
+  async function saveNickname(event: FormEvent) {
     event.preventDefault();
     setSavingName(true); setNameMessage("");
     try {
-      await api<{ user: User }>("/api/account", { method: "PATCH", body: JSON.stringify({ username }) });
+      await api<{ user: User }>("/api/account", { method: "PATCH", body: JSON.stringify({ nickname }) });
       await refreshUser();
-      setNameMessage("用户名已更新");
+      setNameMessage("昵称已更新");
     } catch (reason) { setNameMessage(reason instanceof Error ? reason.message : "保存失败"); }
     finally { setSavingName(false); }
   }
@@ -80,7 +80,7 @@ export function ProfilePage() {
       {!stats ? <LoadingState /> : <>
         <section className="profile-summary">
           <span className="profile-avatar"><UserRound size={31} /></span>
-          <div><h2>{user?.username}</h2><p><ShieldCheck size={15} />{user?.role === "admin" ? "管理员账户" : "学习者账户"}</p></div>
+          <div><h2>{user?.nickname || user?.username}</h2><small className="profile-username">@{user?.username}</small><p><ShieldCheck size={15} />{user?.role === "admin" ? "管理员账户" : "学习者账户"}</p></div>
           <dl><div><dt>累计答题</dt><dd>{stats.attempts}</dd></div><div><dt>练习题目</dt><dd>{stats.practiced}</dd></div><div><dt>正确率</dt><dd>{stats.accuracy}%</dd></div></dl>
         </section>
 
@@ -89,12 +89,14 @@ export function ProfilePage() {
         <section className="section-block">
           <div className="section-heading"><div><p className="eyebrow">账户设置</p><h2>资料与密码</h2></div></div>
           <div className="account-settings">
-            <form className="settings-form" onSubmit={saveUsername}>
-              <div className="settings-form-title"><UserRound size={19} /><span><strong>用户名</strong><small>用于登录和个人显示</small></span></div>
-              <label className="field-label" htmlFor="profile-username">用户名</label>
-              <input className="text-input" id="profile-username" value={username} onChange={(event) => setUsername(event.target.value)} required />
+            <form className="settings-form" onSubmit={saveNickname}>
+              <div className="settings-form-title"><UserRound size={19} /><span><strong>个人资料</strong><small>登录用户名不可修改，昵称用于站内显示</small></span></div>
+              <label className="field-label" htmlFor="profile-username">登录用户名</label>
+              <input className="text-input readonly-input" id="profile-username" value={user?.username ?? ""} readOnly aria-readonly="true" />
+              <label className="field-label" htmlFor="profile-nickname">昵称</label>
+              <input className="text-input" id="profile-nickname" value={nickname} onChange={(event) => setNickname(event.target.value)} maxLength={30} required />
               {nameMessage && <p className={nameMessage.includes("已更新") ? "form-success" : "form-error"} role="status">{nameMessage}</p>}
-              <button className="button secondary small" type="submit" disabled={savingName || username === user?.username}><Save size={16} />{savingName ? "保存中" : "保存用户名"}</button>
+              <button className="button secondary small" type="submit" disabled={savingName || nickname.trim() === user?.nickname}><Save size={16} />{savingName ? "保存中" : "保存昵称"}</button>
             </form>
             <form className="settings-form" onSubmit={savePassword}>
               <div className="settings-form-title"><LockKeyhole size={19} /><span><strong>登录密码</strong><small>修改后其他设备将退出登录</small></span></div>
@@ -117,8 +119,8 @@ export function ProfilePage() {
             {!invites.length && <p className="empty-inline">还没有生成过邀请码。每个邀请码仅可注册一个账户。</p>}
           </div>
         </section>
-        <section className="account-actions"><button className="button danger-text" type="button" onClick={() => void logout()}><LogOut size={18} />退出登录</button></section>
       </>}
+      <section className="account-actions"><button className="button danger-text" type="button" onClick={() => void logout()}><LogOut size={18} />退出登录</button></section>
     </div>
   );
 }

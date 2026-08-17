@@ -53,8 +53,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(response.user);
     },
     logout: async () => {
-      await api("/api/auth/logout", { method: "POST" });
-      setUser(null);
+      try {
+        await api("/api/auth/logout", { method: "POST" });
+      } catch {
+        // Always leave the local authenticated view, even if session cleanup fails.
+      } finally {
+        setUser(null);
+      }
     },
     refreshUser: refresh
   }), [loading, refresh, user]);

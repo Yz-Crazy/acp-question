@@ -1,4 +1,4 @@
-import { BookOpenCheck, CircleUserRound, House, Search, Settings2, TriangleAlert } from "lucide-react";
+import { BookOpenCheck, CircleUserRound, House, LogOut, Search, Settings2, TriangleAlert } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth";
 
@@ -11,7 +11,8 @@ const navItems = [
 ];
 
 export function AppLayout() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const displayName = user?.nickname || user?.username || "";
   const desktopNavItems = user?.role === "admin"
     ? [...navItems, { to: "/admin", label: "管理", icon: Settings2 }]
     : navItems;
@@ -31,15 +32,16 @@ export function AppLayout() {
           ))}
         </nav>
         <div className="side-account">
-          <span className="avatar">{user?.username.slice(0, 1).toUpperCase()}</span>
-          <span><strong>{user?.username}</strong><small>{user?.role === "admin" ? "管理员" : "学习者"}</small></span>
+          <span className="avatar">{displayName.slice(0, 1).toUpperCase()}</span>
+          <span className="side-account-details"><strong>{displayName}</strong><small>@{user?.username} · {user?.role === "admin" ? "管理员" : "学习者"}</small></span>
+          <button className="icon-button side-logout" type="button" title="退出登录" aria-label="退出登录" onClick={() => void logout()}><LogOut size={17} /></button>
         </div>
       </aside>
 
       <div className="main-column">
         <header className="mobile-header">
           <div className="brand-lockup compact"><span className="brand-mark">题</span><strong>题序</strong></div>
-          <span className="header-user">{user?.username}</span>
+          <div className="mobile-account"><span className="header-user">{displayName}</span><button className="icon-button" type="button" title="退出登录" aria-label="退出登录" onClick={() => void logout()}><LogOut size={17} /></button></div>
         </header>
         <main className="page-content"><Outlet /></main>
       </div>

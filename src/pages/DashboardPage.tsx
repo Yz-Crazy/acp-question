@@ -28,7 +28,7 @@ export function DashboardPage() {
   return (
     <div className="page dashboard-page">
       <header className="page-heading dashboard-heading">
-        <div><p>{greeting}，{user?.username}</p><h1>今天准备练哪部分？</h1></div>
+        <div><p>{greeting}，{user?.nickname || user?.username}</p><h1>今天准备练哪部分？</h1></div>
         <Link className="search-shortcut" to="/search"><Search size={18} /><span>搜索题目</span></Link>
       </header>
       {error ? <ErrorState message={error} retry={() => void load()} /> : !stats || !meta ? <LoadingState label="正在汇总学习进度" /> : <>

@@ -175,7 +175,7 @@ function UserManagement() {
   async function updateUser(target: AdminUser, changes: Partial<Pick<AdminUser, "role" | "disabled">>) {
     setUpdating(target.id); setError("");
     try {
-      const response = await api<{ user: Pick<AdminUser, "id" | "username" | "role" | "disabled"> }>(`/api/admin/users/${encodeURIComponent(target.id)}`, { method: "PATCH", body: JSON.stringify(changes) });
+      const response = await api<{ user: Pick<AdminUser, "id" | "username" | "nickname" | "role" | "disabled"> }>(`/api/admin/users/${encodeURIComponent(target.id)}`, { method: "PATCH", body: JSON.stringify(changes) });
       setUsers((current) => current.map((item) => item.id === target.id ? { ...item, ...response.user } : item));
     } catch (reason) { setError(reason instanceof Error ? reason.message : "用户更新失败"); }
     finally { setUpdating(""); }
@@ -183,12 +183,12 @@ function UserManagement() {
 
   return <section className="section-block admin-list-section">
     <div className="section-heading"><div><p className="eyebrow">账户权限</p><h2>注册用户 {total} 人</h2></div><button className="icon-button" type="button" title="刷新用户" onClick={() => void load()}><RefreshCw size={18} /></button></div>
-    <div className="admin-toolbar"><div className="compact-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索用户名" aria-label="搜索用户" /></div></div>
+    <div className="admin-toolbar"><div className="compact-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索用户名或昵称" aria-label="搜索用户" /></div></div>
     <div className="admin-notice"><AlertTriangle size={16} /><span>禁用用户后，其所有登录会话会立即失效；系统始终保留至少一个有效管理员。</span></div>
     {error && <ErrorState message={error} retry={() => void load()} />}
     {loading ? <LoadingState label="正在加载用户" /> : <div className="admin-user-list">{users.map((item) => {
       const self = item.id === currentUser?.id;
-      return <div className={`admin-user-row ${item.disabled ? "disabled" : ""}`} key={item.id}><span className="user-admin-avatar">{item.username.slice(0, 1).toUpperCase()}</span><span className="admin-user-main"><span><strong>{item.username}</strong>{self && <small>当前账户</small>}{item.disabled && <small className="disabled-tag">已禁用</small>}</span><small>答题 {item.attempts} 次 · 正确率 {item.accuracy}% · 错题 {item.activeMistakes} 道</small><small>注册于 {new Date(item.createdAt).toLocaleDateString("zh-CN")}</small></span><select value={item.role} aria-label={`${item.username}的角色`} disabled={self || updating === item.id} onChange={(event) => void updateUser(item, { role: event.target.value as AdminUser["role"] })}><option value="member">学习者</option><option value="admin">管理员</option></select><button className={`button small ${item.disabled ? "secondary" : "danger-text"}`} type="button" disabled={self || updating === item.id} onClick={() => void updateUser(item, { disabled: !item.disabled })}>{item.disabled ? <UserCheck size={16} /> : <UserX size={16} />}{updating === item.id ? "处理中" : item.disabled ? "启用" : "禁用"}</button></div>;
+      return <div className={`admin-user-row ${item.disabled ? "disabled" : ""}`} key={item.id}><span className="user-admin-avatar">{(item.nickname || item.username).slice(0, 1).toUpperCase()}</span><span className="admin-user-main"><span><strong>{item.nickname || item.username}</strong><small className="account-username">@{item.username}</small>{self && <small>当前账户</small>}{item.disabled && <small className="disabled-tag">已禁用</small>}</span><small>答题 {item.attempts} 次 · 正确率 {item.accuracy}% · 错题 {item.activeMistakes} 道</small><small>注册于 {new Date(item.createdAt).toLocaleDateString("zh-CN")}</small></span><select value={item.role} aria-label={`${item.nickname || item.username}的角色`} disabled={self || updating === item.id} onChange={(event) => void updateUser(item, { role: event.target.value as AdminUser["role"] })}><option value="member">学习者</option><option value="admin">管理员</option></select><button className={`button small ${item.disabled ? "secondary" : "danger-text"}`} type="button" disabled={self || updating === item.id} onClick={() => void updateUser(item, { disabled: !item.disabled })}>{item.disabled ? <UserCheck size={16} /> : <UserX size={16} />}{updating === item.id ? "处理中" : item.disabled ? "启用" : "禁用"}</button></div>;
     })}{!users.length && <p className="empty-inline">没有符合条件的用户。</p>}</div>}
   </section>;
 }

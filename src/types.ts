@@ -1,6 +1,7 @@
 export interface User {
   id: string;
   username: string;
+  nickname: string;
   role: "admin" | "member";
 }
 
@@ -70,6 +71,7 @@ export interface AdminQuestion {
 export interface AdminUser {
   id: string;
   username: string;
+  nickname: string;
   role: "admin" | "member";
   disabled: boolean;
   createdAt: string;

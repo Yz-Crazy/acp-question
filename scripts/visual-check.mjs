@@ -3,13 +3,16 @@ import { chromium } from "playwright";
 const chromePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const browser = await chromium.launch({ headless: true, executablePath: chromePath });
 const results = [];
+const baseUrl = process.env.VISUAL_BASE_URL ?? "http://127.0.0.1:5173";
+const testUsername = process.env.VISUAL_TEST_USERNAME ?? "codex_test";
+const testPassword = process.env.VISUAL_TEST_PASSWORD ?? "TestPass2026";
 
 async function login(page) {
-  await page.goto("http://127.0.0.1:5173", { waitUntil: "networkidle" });
-  await page.getByLabel("用户名").fill("codex_test");
-  await page.getByLabel("密码").fill("TestPass2026");
+  await page.goto(baseUrl, { waitUntil: "networkidle" });
+  await page.getByLabel("用户名").fill(testUsername);
+  await page.getByLabel("密码").fill(testPassword);
   await page.getByRole("button", { name: "登录", exact: true }).last().click();
-  await page.waitForURL("http://127.0.0.1:5173/");
+  await page.waitForURL(`${baseUrl}/`);
   await page.getByRole("heading", { name: "今天准备练哪部分？" }).waitFor();
   await page.getByText("已练题目", { exact: true }).waitFor();
 }
@@ -28,7 +31,7 @@ async function checkViewport(name, viewport, screenshot, route = "/") {
   });
   await login(page);
   if (route !== "/") {
-    await page.goto(`http://127.0.0.1:5173${route}`, { waitUntil: "networkidle" });
+    await page.goto(`${baseUrl}${route}`, { waitUntil: "networkidle" });
   }
   await page.screenshot({ path: screenshot, fullPage: true });
   const dimensions = await page.evaluate(() => ({
@@ -52,7 +55,7 @@ async function checkAdminInteraction(name, viewport, screenshot, interact) {
     if (status >= 400 && !(status === 401 && path === "/api/auth/me") && path !== "/favicon.ico") errors.push(`${status} ${path}`);
   });
   await login(page);
-  await page.goto("http://127.0.0.1:5173/admin", { waitUntil: "networkidle" });
+  await page.goto(`${baseUrl}/admin`, { waitUntil: "networkidle" });
   await interact(page);
   await page.screenshot({ path: screenshot, fullPage: true });
   const dimensions = await page.evaluate(() => ({
