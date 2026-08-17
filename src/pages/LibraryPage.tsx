@@ -13,14 +13,23 @@ export function LibraryPage() {
   const [type, setType] = useState("all");
   const [category, setCategory] = useState("");
   const [review, setReview] = useState("sequence");
-  const [limit, setLimit] = useState(20);
+  const [progress, setProgress] = useState({ total: 0, practiced: 0 });
   useEffect(() => {
     api<Meta>("/api/meta").then(setMeta).catch((reason) => setError(reason instanceof Error ? reason.message : "加载失败"));
   }, []);
+  useEffect(() => {
+    let active = true;
+    api<{ total: number; practiced: number }>(`/api/questions?${queryString({ scope, type, category, review: "sequence", limit: 1 })}`)
+      .then((response) => { if (active) setProgress({ total: response.total, practiced: response.practiced }); })
+      .catch(() => { if (active) setProgress({ total: 0, practiced: 0 }); });
+    return () => { active = false; };
+  }, [category, scope, type]);
 
   function start() {
-    navigate(`/quiz?${queryString({ scope, type, category, review, limit })}`);
+    navigate(`/quiz?${queryString({ scope, type, category, review })}`);
   }
+
+  const startLabel = progress.practiced > 0 && progress.practiced < progress.total ? "继续练习" : progress.total > 0 && progress.practiced >= progress.total ? "重新练习" : "开始练习";
 
   return (
     <div className="page library-page">
@@ -47,15 +56,12 @@ export function LibraryPage() {
               {meta.categories.map((item) => <button type="button" key={item.category} className={category === item.category ? "active" : ""} onClick={() => setCategory(item.category)}>{item.category}<small>{item.count}</small></button>)}
             </div>
           </div>
-          <div className="builder-group split-settings">
-            <div><div className="group-title"><Shuffle size={19} /><span><strong>出题顺序</strong></span></div><div className="segmented option-segment"><button type="button" className={review === "sequence" ? "active" : ""} onClick={() => setReview("sequence")}>顺序</button><button type="button" className={review === "random" ? "active" : ""} onClick={() => setReview("random")}>随机</button></div></div>
-            <div><div className="group-title"><ListChecks size={19} /><span><strong>本次题数</strong></span></div><div className="segmented option-segment">{[10, 20, 40].map((count) => <button type="button" key={count} className={limit === count ? "active" : ""} onClick={() => setLimit(count)}>{count}</button>)}</div></div>
-          </div>
+          <div className="builder-group"><div className="group-title"><Shuffle size={19} /><span><strong>出题顺序</strong><small>自动从未刷题位置继续</small></span></div><div className="segmented option-segment"><button type="button" className={review === "sequence" ? "active" : ""} onClick={() => setReview("sequence")}>顺序</button><button type="button" className={review === "random" ? "active" : ""} onClick={() => setReview("random")}>随机</button></div></div>
         </section>
         <aside className="start-summary">
           <p className="eyebrow">本次练习</p><h2>{scope === "core" ? "核心" : "全部"}{type === "single" ? "单选题" : type === "multiple" ? "多选题" : "题目"}</h2>
-          <dl><div><dt>知识分类</dt><dd>{category || "全部"}</dd></div><div><dt>出题顺序</dt><dd>{review === "random" ? "随机" : "顺序"}</dd></div><div><dt>题目数量</dt><dd>最多 {limit} 道</dd></div></dl>
-          <button className="button primary" type="button" onClick={start}>开始练习<ArrowRight size={18} /></button>
+          <dl><div><dt>知识分类</dt><dd>{category || "全部"}</dd></div><div><dt>出题顺序</dt><dd>{review === "random" ? "随机" : "顺序"}</dd></div><div><dt>题库进度</dt><dd>{progress.practiced} / {progress.total} 已刷</dd></div></dl>
+          <button className="button primary" type="button" onClick={start}>{startLabel}<ArrowRight size={18} /></button>
         </aside>
       </div>}
     </div>

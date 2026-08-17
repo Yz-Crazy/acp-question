@@ -42,13 +42,13 @@ export function DashboardPage() {
         <section className="section-block">
           <div className="section-heading"><div><p className="eyebrow">快速开始</p><h2>选择练习范围</h2></div><Link to="/library">更多设置<ArrowRight size={16} /></Link></div>
           <div className="quick-grid">
-            <Link className="quick-card primary-card" to={`/quiz?${queryString({ scope: "all", type: "all", review: "random", limit: 20 })}`}>
-              <span className="quick-icon"><Layers3 size={23} /></span><span><strong>全量随机练习</strong><small>{meta.totals.total} 道题中抽取 20 道</small></span><ArrowRight size={18} />
+            <Link className="quick-card primary-card" to={`/quiz?${queryString({ scope: "all", type: "all", review: "sequence" })}`}>
+              <span className="quick-icon"><Layers3 size={23} /></span><span><strong>继续全量练习</strong><small>{stats.practiced} / {meta.totals.total} 道已刷</small></span><ArrowRight size={18} />
             </Link>
-            <Link className="quick-card" to={`/quiz?${queryString({ scope: "core", type: "all", review: "sequence", limit: 40 })}`}>
+            <Link className="quick-card" to={`/quiz?${queryString({ scope: "core", type: "all", review: "sequence" })}`}>
               <span className="quick-icon core"><BookOpen size={23} /></span><span><strong>核心题库</strong><small>{meta.totals.core} 道重点题目</small></span><ArrowRight size={18} />
             </Link>
-            <Link className="quick-card" to={`/quiz?${queryString({ scope: "wrong", review: "due", limit: 40 })}`}>
+            <Link className="quick-card" to={`/quiz?${queryString({ scope: "wrong", review: "due" })}`}>
               <span className="quick-icon wrong"><CalendarCheck size={23} /></span><span><strong>今日错题复习</strong><small>{stats.dueMistakes} 道已到复习时间</small></span><ArrowRight size={18} />
             </Link>
           </div>
@@ -58,7 +58,7 @@ export function DashboardPage() {
           <div className="section-heading"><div><p className="eyebrow">知识分类</p><h2>按薄弱领域练习</h2></div></div>
           <div className="category-list">
             {meta.categories.slice(0, 8).map((item, index) => (
-              <Link key={item.category} to={`/quiz?${queryString({ scope: "all", category: item.category, review: "sequence", limit: 40 })}`}>
+              <Link key={item.category} to={`/quiz?${queryString({ scope: "all", category: item.category, review: "sequence" })}`}>
                 <span className={`category-index tone-${index % 4}`}>{String(index + 1).padStart(2, "0")}</span>
                 <span><strong>{item.category}</strong><small>{item.count} 道 · 核心 {item.core_count} 道</small></span>
                 <ArrowRight size={17} />

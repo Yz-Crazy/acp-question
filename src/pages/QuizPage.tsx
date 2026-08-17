@@ -5,6 +5,15 @@ import { api } from "../api";
 import { ErrorState, LoadingState } from "../components/States";
 import type { AnswerResult, Question } from "../types";
 
+interface QuestionsResponse {
+  questions: Question[];
+  total: number;
+  practiced: number;
+  resumeQuestionId: string | null;
+}
+
+const QUESTION_PAGE_SIZE = 100;
+
 function scopeTitle(scope: string | null) {
   if (scope === "core") return "核心题库";
   if (scope === "wrong") return "错题复习";
@@ -15,6 +24,31 @@ function QuestionStem({ value }: { value: string }) {
   const [lead, ...rest] = value.split("\n");
   if (rest.length < 2) return <h1>{value}</h1>;
   return <div className="question-stem"><h1>{lead}</h1><pre>{rest.join("\n")}</pre></div>;
+}
+
+function shuffled<T>(items: T[]): T[] {
+  const result = [...items];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const target = Math.floor(Math.random() * (index + 1));
+    [result[index], result[target]] = [result[target], result[index]];
+  }
+  return result;
+}
+
+function resumeIndex(questions: Question[], resumeQuestionId: string | null, explicitStart: string | null): number {
+  const explicitIndex = explicitStart ? questions.findIndex((item) => item.id === explicitStart) : -1;
+  if (explicitIndex >= 0) return explicitIndex;
+  const cursorIndex = resumeQuestionId ? questions.findIndex((item) => item.id === resumeQuestionId) : -1;
+  if (cursorIndex >= 0 && questions[cursorIndex].progress.attempts === 0) return cursorIndex;
+  if (cursorIndex >= 0) {
+    for (let step = 1; step <= questions.length; step += 1) {
+      const candidate = (cursorIndex + step) % questions.length;
+      if (questions[candidate].progress.attempts === 0) return candidate;
+    }
+    return cursorIndex;
+  }
+  const firstUnanswered = questions.findIndex((item) => item.progress.attempts === 0);
+  return firstUnanswered >= 0 ? firstUnanswered : 0;
 }
 
 export function QuizPage() {
@@ -31,25 +65,56 @@ export function QuizPage() {
   const [error, setError] = useState("");
   const [complete, setComplete] = useState(false);
   const [marking, setMarking] = useState(false);
+  const [navigatorOpen, setNavigatorOpen] = useState(false);
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const query = params.toString();
   const title = scopeTitle(params.get("scope"));
+  const mode = params.get("scope") ?? "all";
 
   const load = useCallback(async () => {
-    setLoading(true); setError(""); setComplete(false); setSelected([]); setResult(null); setScore(0); setAnswered(0);
+    setLoading(true); setError(""); setComplete(false); setNavigatorOpen(false); setSelected([]); setResult(null); setScore(0); setAnswered(0);
     try {
-      const response = await api<{ questions: Question[]; total: number }>(`/api/questions?${query}`);
-      setQuestions(response.questions);
-      const start = params.get("start");
-      const startIndex = start ? response.questions.findIndex((item) => item.id === start) : -1;
-      setIndex(startIndex >= 0 ? startIndex : 0);
+      const requestParams = new URLSearchParams(query);
+      requestParams.delete("start");
+      requestParams.set("catalog", "1");
+      requestParams.set("limit", String(QUESTION_PAGE_SIZE));
+      requestParams.set("offset", "0");
+      const firstPage = await api<QuestionsResponse>(`/api/questions?${requestParams.toString()}`);
+      const offsets = Array.from(
+        { length: Math.max(Math.ceil(firstPage.total / QUESTION_PAGE_SIZE) - 1, 0) },
+        (_, page) => (page + 1) * QUESTION_PAGE_SIZE
+      );
+      const remainingPages = await Promise.all(offsets.map((offset) => {
+        const pageParams = new URLSearchParams(requestParams);
+        pageParams.set("offset", String(offset));
+        return api<QuestionsResponse>(`/api/questions?${pageParams.toString()}`);
+      }));
+      const catalog = [firstPage, ...remainingPages].flatMap((page) => page.questions);
+      const loadedQuestions = requestParams.get("review") === "random" ? shuffled(catalog) : catalog;
+      setQuestions(loadedQuestions);
+      const unansweredIds = new Set(loadedQuestions.filter((item) => item.progress.attempts === 0).map((item) => item.id));
+      setPendingIds(mode === "wrong" || unansweredIds.size === 0 ? new Set(loadedQuestions.map((item) => item.id)) : unansweredIds);
+      setIndex(resumeIndex(loadedQuestions, firstPage.resumeQuestionId, new URLSearchParams(query).get("start")));
     } catch (reason) { setError(reason instanceof Error ? reason.message : "题目加载失败"); }
     finally { setLoading(false); }
-  }, [params, query]);
+  }, [mode, query]);
   useEffect(() => { void load(); }, [load]);
 
   const question = questions[index];
-  const progress = questions.length ? ((index + (result ? 1 : 0)) / questions.length) * 100 : 0;
-  const mode = params.get("scope") ?? "all";
+  const questionId = question?.id;
+  const practicedCount = useMemo(() => questions.filter((item) => item.progress.attempts > 0).length, [questions]);
+  const progress = questions.length ? (practicedCount / questions.length) * 100 : 0;
+
+  useEffect(() => {
+    if (loading || !questionId) return;
+    const timer = window.setTimeout(() => {
+      void api("/api/practice/cursor", {
+        method: "PATCH",
+        body: JSON.stringify({ query, questionId })
+      }).catch(() => undefined);
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [loading, query, questionId]);
 
   function choose(key: string) {
     if (!question || result) return;
@@ -68,15 +133,36 @@ export function QuizPage() {
       setResult(response);
       setAnswered((value) => value + 1);
       if (response.correct) setScore((value) => value + 1);
-      setQuestions((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, progress: { ...item.progress, marked: response.mistakeActive } } : item));
+      setPendingIds((current) => {
+        const next = new Set(current);
+        next.delete(question.id);
+        return next;
+      });
+      setQuestions((current) => current.map((item, itemIndex) => itemIndex === index ? {
+        ...item,
+        progress: {
+          ...item.progress,
+          attempts: item.progress.attempts + 1,
+          lastCorrect: response.correct,
+          marked: response.mistakeActive,
+          wrongCount: item.progress.wrongCount + (response.correct ? 0 : 1)
+        }
+      } : item));
     } catch (reason) { setError(reason instanceof Error ? reason.message : "提交失败"); }
     finally { setSubmitting(false); }
   }
 
-  function next() {
-    if (index >= questions.length - 1) { setComplete(true); return; }
-    setIndex((value) => value + 1); setSelected([]); setResult(null); setError("");
+  function goToQuestion(targetIndex: number) {
+    setIndex(targetIndex); setSelected([]); setResult(null); setError(""); setNavigatorOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function next() {
+    for (let step = 1; step <= questions.length; step += 1) {
+      const candidate = (index + step) % questions.length;
+      if (pendingIds.has(questions[candidate].id)) { goToQuestion(candidate); return; }
+    }
+    setComplete(true);
   }
 
   async function toggleMark() {
@@ -94,6 +180,12 @@ export function QuizPage() {
   }
 
   const optionEntries = useMemo(() => question ? Object.entries(question.options) : [], [question]);
+  useEffect(() => {
+    if (!navigatorOpen) return;
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setNavigatorOpen(false); };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [navigatorOpen]);
 
   if (loading) return <div className="quiz-shell"><LoadingState label="正在准备本次练习" /></div>;
   if (error && !question) return <div className="quiz-shell"><ErrorState message={error} retry={() => void load()} /></div>;
@@ -109,7 +201,7 @@ export function QuizPage() {
     <div className="quiz-page">
       <header className="quiz-header">
         <button className="icon-button" type="button" title="退出练习" onClick={() => navigate(mode === "wrong" ? "/wrong" : "/library")}><X size={21} /></button>
-        <div><strong>{title}</strong><span>{index + 1} / {questions.length}</span></div>
+        <button className="quiz-position-button" type="button" onClick={() => setNavigatorOpen(true)} aria-expanded={navigatorOpen}><span><strong>{title}</strong><small>{question.number != null ? `#${question.number}` : `第 ${index + 1} 题`} · 已刷 {practicedCount}/{questions.length}</small></span><ListChecks size={18} /></button>
         <button className={`icon-button mark-button ${question.progress.marked ? "active" : ""}`} type="button" title={question.progress.marked ? "移出错题本" : "加入错题本"} onClick={() => void toggleMark()} disabled={marking}>{question.progress.marked ? <BookmarkMinus size={20} /> : <BookmarkPlus size={20} />}</button>
         <span className="quiz-progress"><i style={{ width: `${progress}%` }} /></span>
       </header>
@@ -134,7 +226,18 @@ export function QuizPage() {
           </section>}
         </article>
       </main>
-      <footer className="quiz-footer"><div>{result ? <span className={result.correct ? "footer-result correct-text" : "footer-result wrong-text"}>{result.correct ? <CheckCircle2 size={18} /> : <XCircle size={18} />}{result.correct ? "回答正确" : "已加入错题本"}</span> : <span className="selected-count">已选择 {selected.length} 项</span>}</div>{result ? <button className="button primary" type="button" onClick={next}>{index === questions.length - 1 ? "查看结果" : "下一题"}<ArrowRight size={18} /></button> : <button className="button primary" type="button" disabled={!selected.length || submitting} onClick={() => void submit()}>{submitting ? "提交中" : "提交答案"}<ArrowRight size={18} /></button>}</footer>
+      <footer className="quiz-footer"><div>{result ? <span className={result.correct ? "footer-result correct-text" : "footer-result wrong-text"}>{result.correct ? <CheckCircle2 size={18} /> : <XCircle size={18} />}{result.correct ? "回答正确" : "已加入错题本"}</span> : <span className="selected-count">已选择 {selected.length} 项</span>}</div>{result ? <button className="button primary" type="button" onClick={next}>{pendingIds.size ? "下一道未刷" : "查看结果"}<ArrowRight size={18} /></button> : <button className="button primary" type="button" disabled={!selected.length || submitting} onClick={() => void submit()}>{submitting ? "提交中" : "提交答案"}<ArrowRight size={18} /></button>}</footer>
+      {navigatorOpen && <div className="question-navigator-backdrop" role="presentation" onMouseDown={() => setNavigatorOpen(false)}><section className="question-navigator" role="dialog" aria-modal="true" aria-labelledby="question-navigator-title" onMouseDown={(event) => event.stopPropagation()}>
+        <header><div><p className="eyebrow">练习进度</p><h2 id="question-navigator-title">浏览题号</h2></div><button className="icon-button" type="button" title="关闭题号列表" onClick={() => setNavigatorOpen(false)}><X size={20} /></button></header>
+        <div className="question-navigator-summary"><strong>{practicedCount} / {questions.length}</strong><span>已刷题目</span></div>
+        <div className="question-status-legend"><span><i className="unanswered" />未刷</span><span><i className="correct" />已刷正确</span><span><i className="wrong" />已刷错误</span><span><i className="current" />当前题</span></div>
+        <div className="question-number-grid">{questions.map((item, itemIndex) => {
+          const answeredQuestion = item.progress.attempts > 0;
+          const status = answeredQuestion ? item.progress.lastCorrect ? "correct" : "wrong" : "unanswered";
+          const label = item.number != null ? String(item.number) : String(itemIndex + 1);
+          return <button key={item.id} type="button" className={`${status} ${itemIndex === index ? "current" : ""}`} aria-current={itemIndex === index ? "true" : undefined} aria-label={`题号 ${label}，${answeredQuestion ? item.progress.lastCorrect ? "已刷正确" : "已刷错误" : "未刷"}`} onClick={() => goToQuestion(itemIndex)}><span>{label}</span>{answeredQuestion && (item.progress.lastCorrect ? <Check size={12} /> : <X size={12} />)}</button>;
+        })}</div>
+      </section></div>}
     </div>
   );
 }

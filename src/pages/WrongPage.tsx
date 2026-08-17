@@ -41,16 +41,16 @@ export function WrongPage() {
           <div className="section-heading"><div><p className="eyebrow">复习模式</p><h2>换一种方式巩固</h2></div></div>
           <div className="review-grid">
             {reviewModes.map(({ review, title, description, icon: Icon, tone }) => (
-              <Link key={review} className="review-card" to={`/quiz?${queryString({ scope: "wrong", review, limit: 60 })}`}>
+              <Link key={review} className="review-card" to={`/quiz?${queryString({ scope: "wrong", review })}`}>
                 <span className={`review-icon ${tone}`}><Icon size={21} /></span><span><strong>{title}</strong><small>{description}</small></span><ArrowRight size={18} />
               </Link>
             ))}
           </div>
         </section>
         <section className="section-block">
-          <div className="section-heading"><div><p className="eyebrow">错题预览</p><h2>优先处理高频错题</h2></div>{questions.length > 0 && <Link to="/quiz?scope=wrong&review=frequency&limit=60">开始重做<ArrowRight size={16} /></Link>}</div>
+          <div className="section-heading"><div><p className="eyebrow">错题预览</p><h2>优先处理高频错题</h2></div>{questions.length > 0 && <Link to="/quiz?scope=wrong&review=frequency">开始重做<ArrowRight size={16} /></Link>}</div>
           <div className="question-preview-list">
-            {questions.map((question) => <Link key={question.id} to={`/quiz?${queryString({ scope: "wrong", review: "frequency", limit: 60, start: question.id })}`}><span className="preview-status"><History size={17} /></span><span><strong>{question.question.replaceAll("\n", " ")}</strong><small>{question.category} · 答错 {question.progress.wrongCount} 次</small></span><ArrowRight size={17} /></Link>)}
+            {questions.map((question) => <Link key={question.id} to={`/quiz?${queryString({ scope: "wrong", review: "frequency", start: question.id })}`}><span className="preview-status"><History size={17} /></span><span><strong>{question.question.replaceAll("\n", " ")}</strong><small>{question.category} · 答错 {question.progress.wrongCount} 次</small></span><ArrowRight size={17} /></Link>)}
             {!questions.length && <div className="empty-state compact"><CheckCircle2 size={28} /><strong>当前没有待掌握错题</strong><p>答错或手动标记的题目会出现在这里。</p></div>}
           </div>
         </section>

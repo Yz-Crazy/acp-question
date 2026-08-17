@@ -68,6 +68,32 @@ async function checkAdminInteraction(name, viewport, screenshot, interact) {
   await context.close();
 }
 
+async function checkQuizNavigator(name, viewport, screenshot) {
+  const context = await browser.newContext({ viewport });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("response", (response) => {
+    const status = response.status();
+    const path = new URL(response.url()).pathname;
+    if (status >= 400 && !(status === 401 && path === "/api/auth/me") && path !== "/favicon.ico") errors.push(`${status} ${path}`);
+  });
+  await login(page);
+  await page.goto(`${baseUrl}/quiz?scope=all&type=all&review=sequence`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /题库练习/ }).click();
+  await page.getByRole("dialog").waitFor();
+  await page.getByRole("heading", { name: "浏览题号" }).waitFor();
+  await page.screenshot({ path: screenshot, fullPage: true });
+  const dimensions = await page.evaluate(() => ({
+    width: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+    height: document.documentElement.clientHeight,
+    bodyHeight: document.body.scrollHeight
+  }));
+  results.push({ name, dimensions, errors });
+  await context.close();
+}
+
 await checkViewport("desktop-dashboard", { width: 1440, height: 900 }, "/private/tmp/acp-desktop.png");
 await checkViewport("desktop-admin", { width: 1440, height: 900 }, "/private/tmp/acp-admin-desktop.png", "/admin");
 await checkViewport("mobile-dashboard", { width: 390, height: 844 }, "/private/tmp/acp-mobile.png");
@@ -82,6 +108,8 @@ await checkAdminInteraction("desktop-question-editor", { width: 1440, height: 90
   await page.getByTitle("编辑题目").first().click();
   await page.getByRole("dialog").waitFor();
 });
+await checkQuizNavigator("desktop-quiz-navigator", { width: 1440, height: 900 }, "/private/tmp/acp-quiz-navigator-desktop.png");
+await checkQuizNavigator("mobile-quiz-navigator", { width: 390, height: 844 }, "/private/tmp/acp-quiz-navigator-mobile.png");
 
 await browser.close();
 console.log(JSON.stringify(results, null, 2));

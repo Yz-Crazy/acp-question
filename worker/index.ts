@@ -564,6 +564,15 @@ function mapQuestion(row: QuestionRow) {
   };
 }
 
+function practiceKeyFromParams(params: URLSearchParams): string {
+  const scope = params.get("scope") ?? "all";
+  const type = params.get("type") ?? "all";
+  const category = (params.get("category") ?? "").trim();
+  const search = (params.get("search") ?? "").trim().slice(0, 80);
+  const review = params.get("review") ?? "sequence";
+  return JSON.stringify([scope, type, category, search, review]);
+}
+
 async function getQuestions(request: Request, env: Env, user: User): Promise<Response> {
   const url = new URL(request.url);
   const scope = url.searchParams.get("scope") ?? "all";
@@ -571,6 +580,7 @@ async function getQuestions(request: Request, env: Env, user: User): Promise<Res
   const category = (url.searchParams.get("category") ?? "").trim();
   const search = (url.searchParams.get("search") ?? "").trim().slice(0, 80);
   const review = url.searchParams.get("review") ?? "sequence";
+  const catalogOrder = url.searchParams.get("catalog") === "1";
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 40, 1), 100);
   const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
 
@@ -595,10 +605,11 @@ async function getQuestions(request: Request, env: Env, user: User): Promise<Res
   if (scope === "wrong" && review === "due") conditions.push("(m.next_review_at IS NULL OR datetime(m.next_review_at) <= datetime('now'))");
 
   let order = "COALESCE(q.source_id, 2147483647), q.created_at";
-  if (review === "random") order = "RANDOM()";
-  else if (scope === "wrong" && review === "frequency") order = "m.wrong_count DESC, m.last_wrong_at DESC";
-  else if (scope === "wrong" && review === "due") order = "COALESCE(m.next_review_at, m.last_wrong_at), m.wrong_count DESC";
+  if (review === "random") order = catalogOrder ? "COALESCE(q.source_id, 2147483647), q.created_at, q.id" : "RANDOM()";
+  else if (scope === "wrong" && review === "frequency") order = "m.wrong_count DESC, m.last_wrong_at DESC, q.id";
+  else if (scope === "wrong" && review === "due") order = "COALESCE(m.next_review_at, m.last_wrong_at), m.wrong_count DESC, q.id";
   else if (review !== "sequence") throw new ApiError(400, "未知的出题顺序");
+  else order = "COALESCE(q.source_id, 2147483647), q.created_at, q.id";
 
   const from = `FROM questions q
     LEFT JOIN user_progress p ON p.question_id = q.id AND p.user_id = ?
@@ -611,8 +622,35 @@ async function getQuestions(request: Request, env: Env, user: User): Promise<Res
       m.wrong_count, m.next_review_at
      ${from} ORDER BY ${order} LIMIT ? OFFSET ?`
   ).bind(...values, limit, offset).all<QuestionRow>();
-  const total = await env.DB.prepare(`SELECT COUNT(*) AS count ${from}`).bind(...values).first<{ count: number }>();
-  return apiJson({ questions: rows.results.map(mapQuestion), total: total?.count ?? 0 });
+  const summary = await env.DB.prepare(
+    `SELECT COUNT(*) AS count, COALESCE(SUM(CASE WHEN p.attempt_count > 0 THEN 1 ELSE 0 END), 0) AS practiced ${from}`
+  ).bind(...values).first<{ count: number; practiced: number }>();
+  const practiceKey = practiceKeyFromParams(url.searchParams);
+  const cursor = await env.DB.prepare(
+    "SELECT question_id AS questionId FROM practice_cursors WHERE user_id = ? AND practice_key = ?"
+  ).bind(user.id, practiceKey).first<{ questionId: string }>();
+  return apiJson({
+    questions: rows.results.map(mapQuestion),
+    total: summary?.count ?? 0,
+    practiced: summary?.practiced ?? 0,
+    resumeQuestionId: cursor?.questionId ?? null
+  });
+}
+
+async function updatePracticeCursor(request: Request, env: Env, user: User): Promise<Response> {
+  const body = await readJson<{ query?: unknown; questionId?: unknown }>(request);
+  const query = typeof body.query === "string" ? body.query : "";
+  const questionId = typeof body.questionId === "string" ? body.questionId : "";
+  if (query.length > 500 || !questionId) throw new ApiError(400, "练习位置参数不正确");
+  const exists = await env.DB.prepare("SELECT id FROM questions WHERE id = ? AND active = 1").bind(questionId).first();
+  if (!exists) throw new ApiError(404, "题目不存在或已停用");
+  const practiceKey = practiceKeyFromParams(new URLSearchParams(query));
+  await env.DB.prepare(
+    `INSERT INTO practice_cursors (user_id, practice_key, question_id, updated_at)
+     VALUES (?, ?, ?, datetime('now'))
+     ON CONFLICT(user_id, practice_key) DO UPDATE SET question_id = excluded.question_id, updated_at = excluded.updated_at`
+  ).bind(user.id, practiceKey, questionId).run();
+  return apiJson({ ok: true });
 }
 
 async function submitAnswer(request: Request, env: Env, user: User, questionId: string): Promise<Response> {
@@ -792,6 +830,7 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
   if (path === "/api/meta" && method === "GET") return getMeta(env);
   if (path === "/api/stats" && method === "GET") return getStats(env, user);
   if (path === "/api/questions" && method === "GET") return getQuestions(request, env, user);
+  if (path === "/api/practice/cursor" && method === "PATCH") return updatePracticeCursor(request, env, user);
   if (path === "/api/invites" && method === "GET") return getInvites(env, user);
   if (path === "/api/invites" && method === "POST") return createInvite(env, user);
 

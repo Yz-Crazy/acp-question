@@ -33,7 +33,7 @@ export function SearchPage() {
     return () => { active = false; };
   }, [category, debounced, scope, type]);
 
-  const sessionUrl = (start?: string) => `/quiz?${queryString({ search: debounced, type, scope, category, review: "sequence", limit: 50, start })}`;
+  const sessionUrl = (start?: string) => `/quiz?${queryString({ search: debounced, type, scope, category, review: "sequence", start })}`;
   return (
     <div className="page search-page">
       <header className="page-heading"><div><p>题干、选项和解析均可检索</p><h1>搜索题目</h1></div></header>
