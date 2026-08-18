@@ -153,8 +153,17 @@ export function QuizPage() {
   }
 
   function goToQuestion(targetIndex: number) {
+    if (!result && selected.length && !window.confirm("当前答案尚未提交，确定切换题目吗？")) return;
     setIndex(targetIndex); setSelected([]); setResult(null); setError(""); setNavigatorOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function previousQuestion() {
+    if (index > 0) goToQuestion(index - 1);
+  }
+
+  function nextQuestion() {
+    if (index < questions.length - 1) goToQuestion(index + 1);
   }
 
   function next() {
@@ -226,7 +235,7 @@ export function QuizPage() {
           </section>}
         </article>
       </main>
-      <footer className="quiz-footer"><div>{result ? <span className={result.correct ? "footer-result correct-text" : "footer-result wrong-text"}>{result.correct ? <CheckCircle2 size={18} /> : <XCircle size={18} />}{result.correct ? "回答正确" : "已加入错题本"}</span> : <span className="selected-count">已选择 {selected.length} 项</span>}</div>{result ? <button className="button primary" type="button" onClick={next}>{pendingIds.size ? "下一道未刷" : "查看结果"}<ArrowRight size={18} /></button> : <button className="button primary" type="button" disabled={!selected.length || submitting} onClick={() => void submit()}>{submitting ? "提交中" : "提交答案"}<ArrowRight size={18} /></button>}</footer>
+      <footer className="quiz-footer"><div className="quiz-footer-left"><button className="button secondary small quiz-nav-button" type="button" disabled={index <= 0} onClick={previousQuestion}><ArrowLeft size={17} />上一题</button><div className="quiz-footer-status">{result ? <span className={result.correct ? "footer-result correct-text" : "footer-result wrong-text"}>{result.correct ? <CheckCircle2 size={18} /> : <XCircle size={18} />}{result.correct ? "回答正确" : "已加入错题本"}</span> : <span className="selected-count">已选择 {selected.length} 项</span>}</div></div><div className="quiz-footer-actions">{result ? <button className="button primary" type="button" onClick={next}>{pendingIds.size ? "下一道未刷" : "查看结果"}<ArrowRight size={18} /></button> : <button className="button primary" type="button" disabled={!selected.length || submitting} onClick={() => void submit()}>{submitting ? "提交中" : "提交答案"}<ArrowRight size={18} /></button>}<button className="button secondary small quiz-nav-button" type="button" disabled={index >= questions.length - 1} onClick={nextQuestion}>下一题<ArrowRight size={17} /></button></div></footer>
       {navigatorOpen && <div className="question-navigator-backdrop" role="presentation" onMouseDown={() => setNavigatorOpen(false)}><section className="question-navigator" role="dialog" aria-modal="true" aria-labelledby="question-navigator-title" onMouseDown={(event) => event.stopPropagation()}>
         <header><div><p className="eyebrow">练习进度</p><h2 id="question-navigator-title">浏览题号</h2></div><button className="icon-button" type="button" title="关闭题号列表" onClick={() => setNavigatorOpen(false)}><X size={20} /></button></header>
         <div className="question-navigator-summary"><strong>{practicedCount} / {questions.length}</strong><span>已刷题目</span></div>
