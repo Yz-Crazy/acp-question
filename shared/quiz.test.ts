@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAnswerCorrect, nextReviewDate, normalizeAnswers, normalizeQuestionType, scoreMockExam } from "./quiz";
+import { isAnswerCorrect, MOCK_EXAM_CATEGORY_QUOTAS, nextReviewDate, normalizeAnswers, normalizeQuestionType, scoreMockExam } from "./quiz";
 
 describe("quiz helpers", () => {
   it("compares multi-select answers without depending on order", () => {
@@ -25,5 +25,11 @@ describe("quiz helpers", () => {
     expect(scoreMockExam([...singles, ...multiples])).toMatchObject({ score: 100, passed: true, wrongCount: 0 });
     expect(scoreMockExam([...singles, ...multiples.slice(0, 15), ...multiples.slice(15).map((item) => ({ ...item, submitted: [] }))])).toMatchObject({ score: 80, passed: true });
     expect(scoreMockExam([...singles.slice(0, 49), { ...singles[49], submitted: [] }, ...multiples.slice(0, 15), ...multiples.slice(15).map((item) => ({ ...item, submitted: [] }))])).toMatchObject({ score: 79, passed: false });
+  });
+
+  it("keeps the official mock exam category distribution at 50 single and 25 multiple questions", () => {
+    expect(MOCK_EXAM_CATEGORY_QUOTAS.reduce((total, quota) => total + quota.single + quota.multiple, 0)).toBe(75);
+    expect(MOCK_EXAM_CATEGORY_QUOTAS.reduce((total, quota) => total + quota.single, 0)).toBe(50);
+    expect(MOCK_EXAM_CATEGORY_QUOTAS.reduce((total, quota) => total + quota.multiple, 0)).toBe(25);
   });
 });

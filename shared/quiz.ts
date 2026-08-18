@@ -1,5 +1,21 @@
 export type QuestionType = "single" | "multiple";
 
+export interface MockExamCategoryQuota {
+  category: string;
+  single: number;
+  multiple: number;
+}
+
+// Official mock-exam distribution rounded to exactly 75 questions.
+export const MOCK_EXAM_CATEGORY_QUOTAS: readonly MockExamCategoryQuota[] = [
+  { category: "大模型应用开发", single: 9, multiple: 4 },
+  { category: "大模型提示词工程", single: 7, multiple: 4 },
+  { category: "大模型检索增强", single: 10, multiple: 5 },
+  { category: "大模型微调", single: 8, multiple: 4 },
+  { category: "多Agent及多模态应用", single: 8, multiple: 4 },
+  { category: "大模型应用生产实践", single: 8, multiple: 4 }
+];
+
 export function normalizeAnswers(answers: unknown): string[] {
   if (!Array.isArray(answers)) return [];
   return [...new Set(answers.filter((item): item is string => typeof item === "string").map((item) => item.trim().toUpperCase()))].sort();

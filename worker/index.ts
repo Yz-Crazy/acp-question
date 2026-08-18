@@ -1,4 +1,4 @@
-import { isAnswerCorrect, nextReviewDate, normalizeAnswers, normalizeQuestionType, scoreMockExam } from "../shared/quiz";
+import { isAnswerCorrect, MOCK_EXAM_CATEGORY_QUOTAS, nextReviewDate, normalizeAnswers, normalizeQuestionType, scoreMockExam } from "../shared/quiz";
 
 interface Env {
   DB: D1Database;
@@ -65,6 +65,20 @@ interface MockExamItemRow extends MockSourceRow {
   position: number;
   selected_json: string | null;
   marked: number;
+}
+
+const MOCK_EXAM_CATEGORY_ALIASES: Record<string, readonly string[]> = {
+  "大模型应用开发": ["大模型应用开发基础"],
+  "多Agent及多模态应用": ["多agent及多模态应用"]
+};
+
+function mockCategoryAliases(category: string): string[] {
+  return [category, ...(MOCK_EXAM_CATEGORY_ALIASES[category] ?? [])];
+}
+
+function canonicalMockCategory(category: string): string {
+  const normalized = category.trim().toLowerCase();
+  return MOCK_EXAM_CATEGORY_QUOTAS.find((quota) => mockCategoryAliases(quota.category).some((alias) => alias.toLowerCase() === normalized))?.category ?? category.trim();
 }
 
 class ApiError extends Error {
@@ -945,7 +959,7 @@ function mapMockExamSummary(row: MockExamRow & { answeredCount?: number; markedC
 }
 
 async function getMockExamCatalog(env: Env, user: User): Promise<Response> {
-  const [templates, exams, coreCounts] = await Promise.all([
+  const [templates, exams, coreCounts, categoryCounts] = await Promise.all([
     env.DB.prepare(
       `SELECT t.id, t.slot, t.title, t.updated_at AS updatedAt,
         COUNT(i.id) AS questionCount,
@@ -965,12 +979,28 @@ async function getMockExamCatalog(env: Env, user: User): Promise<Response> {
       `SELECT COALESCE(SUM(type = 'single'), 0) AS singleCount,
         COALESCE(SUM(type = 'multiple'), 0) AS multipleCount
        FROM questions WHERE active = 1 AND is_core = 1`
-    ).first<{ singleCount: number; multipleCount: number }>()
+    ).first<{ singleCount: number; multipleCount: number }>(),
+    env.DB.prepare(
+      `SELECT category, type, COUNT(*) AS count
+       FROM questions WHERE active = 1 AND is_core = 1
+       GROUP BY category, type`
+    ).all<{ category: string; type: "single" | "multiple"; count: number }>()
   ]);
+  const categoryCountMap = new Map<string, number>();
+  for (const row of categoryCounts.results) {
+    const key = `${canonicalMockCategory(row.category)}\u0000${row.type}`;
+    categoryCountMap.set(key, (categoryCountMap.get(key) ?? 0) + Number(row.count));
+  }
+  const randomDistribution = MOCK_EXAM_CATEGORY_QUOTAS.map((quota) => ({
+    ...quota,
+    availableSingle: categoryCountMap.get(`${quota.category}\u0000single`) ?? 0,
+    availableMultiple: categoryCountMap.get(`${quota.category}\u0000multiple`) ?? 0
+  }));
   return apiJson({
     templates: templates.results.map(templateSummary),
     exams: exams.results.map(mapMockExamSummary),
-    coreAvailability: { single: Number(coreCounts?.singleCount ?? 0), multiple: Number(coreCounts?.multipleCount ?? 0) }
+    coreAvailability: { single: Number(coreCounts?.singleCount ?? 0), multiple: Number(coreCounts?.multipleCount ?? 0) },
+    randomDistribution
   });
 }
 
@@ -1004,21 +1034,38 @@ async function createMockExam(request: Request, env: Env, user: User): Promise<R
     ).bind(template.id).all<MockSourceRow>();
     items = rows.results;
   } else {
-    const [singles, multiples, count] = await Promise.all([
-      env.DB.prepare(
-        `SELECT id AS source_question_id, type, question, options_json, answer_json, explanation, category, reference_url
-         FROM questions WHERE active = 1 AND is_core = 1 AND type = 'single' ORDER BY RANDOM() LIMIT 50`
-      ).all<MockSourceRow>(),
-      env.DB.prepare(
-        `SELECT id AS source_question_id, type, question, options_json, answer_json, explanation, category, reference_url
-         FROM questions WHERE active = 1 AND is_core = 1 AND type = 'multiple' ORDER BY RANDOM() LIMIT 25`
-      ).all<MockSourceRow>(),
+    const [selections, count] = await Promise.all([
+      Promise.all(MOCK_EXAM_CATEGORY_QUOTAS.map(async (quota) => {
+        const categoryNames = mockCategoryAliases(quota.category);
+        const categoryPlaceholders = categoryNames.map(() => "?").join(", ");
+        const [singles, multiples] = await Promise.all([
+          env.DB.prepare(
+            `SELECT id AS source_question_id, type, question, options_json, answer_json, explanation, category, reference_url
+             FROM questions
+             WHERE active = 1 AND is_core = 1 AND type = 'single' AND category COLLATE NOCASE IN (${categoryPlaceholders})
+             ORDER BY RANDOM() LIMIT ${quota.single}`
+          ).bind(...categoryNames).all<MockSourceRow>(),
+          env.DB.prepare(
+            `SELECT id AS source_question_id, type, question, options_json, answer_json, explanation, category, reference_url
+             FROM questions
+             WHERE active = 1 AND is_core = 1 AND type = 'multiple' AND category COLLATE NOCASE IN (${categoryPlaceholders})
+             ORDER BY RANDOM() LIMIT ${quota.multiple}`
+          ).bind(...categoryNames).all<MockSourceRow>()
+        ]);
+        return {
+          quota,
+          singles: singles.results.map((item) => ({ ...item, category: quota.category })),
+          multiples: multiples.results.map((item) => ({ ...item, category: quota.category }))
+        };
+      })),
       env.DB.prepare("SELECT COUNT(*) AS count FROM mock_exams WHERE user_id = ? AND source = 'random'").bind(user.id).first<{ count: number }>()
     ]);
-    if (singles.results.length < 50 || multiples.results.length < 25) {
-      throw new ApiError(409, `核心题库题量不足：需要 50 道单选和 25 道多选，当前可用 ${singles.results.length} 道单选、${multiples.results.length} 道多选`);
-    }
-    items = [...singles.results, ...multiples.results];
+    const shortages = selections.flatMap(({ quota, singles, multiples }) => [
+      singles.length < quota.single ? `${quota.category}单选需要 ${quota.single} 道，当前 ${singles.length} 道` : "",
+      multiples.length < quota.multiple ? `${quota.category}多选需要 ${quota.multiple} 道，当前 ${multiples.length} 道` : ""
+    ]).filter(Boolean);
+    if (shortages.length) throw new ApiError(409, `核心题库按官方比例题量不足：${shortages.join("；")}`);
+    items = selections.flatMap(({ singles, multiples }) => [...singles, ...multiples]);
     title = `随机模拟题 #${Number(count?.count ?? 0) + 1}`;
   }
   if (items.length !== 75) throw new ApiError(409, "模拟题模板不完整，请联系管理员重新上传");

@@ -9,6 +9,13 @@ interface MockExamCatalog {
   templates: MockExamTemplate[];
   exams: MockExamSummary[];
   coreAvailability: { single: number; multiple: number };
+  randomDistribution: Array<{
+    category: string;
+    single: number;
+    multiple: number;
+    availableSingle: number;
+    availableMultiple: number;
+  }>;
 }
 
 function remainingLabel(seconds: number): string {
@@ -44,7 +51,8 @@ export function MockExamsPage() {
     finally { setCreating(""); }
   }
 
-  const randomReady = Boolean(catalog && catalog.coreAvailability.single >= 50 && catalog.coreAvailability.multiple >= 25);
+  const randomShortages = catalog?.randomDistribution.filter((quota) => quota.availableSingle < quota.single || quota.availableMultiple < quota.multiple) ?? [];
+  const randomReady = Boolean(catalog && randomShortages.length === 0);
   return (
     <div className="page mock-exams-page">
       <header className="page-heading"><div><p>正式计时、暂停续答与交卷复盘</p><h1>模拟题</h1></div></header>
@@ -67,9 +75,9 @@ export function MockExamsPage() {
         </section>
 
         <section className="random-exam-band">
-          <div><span className="random-exam-icon"><Shuffle size={22} /></span><span><strong>核心题库随机组卷</strong><small>每次重新抽取 50 道核心单选题和 25 道核心多选题</small></span></div>
+          <div><span className="random-exam-icon"><Shuffle size={22} /></span><span><strong>核心题库随机组卷</strong><small>按官方比例抽取六类核心题，共 50 道单选和 25 道多选</small></span></div>
           <button className="button primary" type="button" disabled={!randomReady || Boolean(creating)} onClick={() => void create("random")}><Plus size={17} />{creating === "random" ? "生成中" : "生成随机模拟题"}</button>
-          {!randomReady && <p>核心题量不足：当前 {catalog.coreAvailability.single} 道单选、{catalog.coreAvailability.multiple} 道多选。</p>}
+          {!randomReady && <p>核心题库按官方比例题量不足：{randomShortages.map((quota) => `${quota.category}（单选 ${quota.availableSingle}/${quota.single}，多选 ${quota.availableMultiple}/${quota.multiple}）`).join("；")}</p>}
         </section>
 
         <section className="section-block">
