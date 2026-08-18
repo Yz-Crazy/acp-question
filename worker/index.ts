@@ -545,7 +545,7 @@ async function getAdminUsers(request: Request, env: Env): Promise<Response> {
     `SELECT u.id, u.username, u.nickname, u.role, u.disabled, u.created_at AS createdAt,
       COUNT(a.id) AS attempts, COALESCE(SUM(a.is_correct), 0) AS correct,
       COUNT(DISTINCT a.question_id) AS practiced,
-      COALESCE((SELECT SUM(m.active = 1) FROM mistakes m WHERE m.user_id = u.id), 0) AS activeMistakes
+      COALESCE((SELECT SUM(m.active = 1 AND (COALESCE(m.manually_added, 0) = 1 OR COALESCE(m.correct_streak, 0) < 2)) FROM mistakes m WHERE m.user_id = u.id), 0) AS activeMistakes
      FROM users u LEFT JOIN attempts a ON a.user_id = u.id ${where}
      GROUP BY u.id ORDER BY u.created_at DESC LIMIT ? OFFSET ?`
   ).bind(...values, limit, offset).all<Record<string, unknown>>();
@@ -638,7 +638,7 @@ async function getQuestions(request: Request, env: Env, user: User): Promise<Res
   const conditions = ["q.active = 1"];
   const values: unknown[] = [user.id, user.id];
   if (scope === "core") conditions.push("q.is_core = 1");
-  else if (scope === "wrong") conditions.push("m.active = 1");
+  else if (scope === "wrong") conditions.push("m.active = 1 AND (COALESCE(m.manually_added, 0) = 1 OR COALESCE(m.correct_streak, 0) < 2)");
   else if (scope !== "all") throw new ApiError(400, "未知的题库范围");
   if (type === "single" || type === "multiple") {
     conditions.push("q.type = ?");
@@ -669,7 +669,7 @@ async function getQuestions(request: Request, env: Env, user: User): Promise<Res
   const rows = await env.DB.prepare(
     `SELECT q.id, q.source_id, q.type, q.question, q.options_json, q.category, q.is_core,
       p.attempt_count, p.last_is_correct,
-      CASE WHEN m.active = 1 THEN 1 ELSE 0 END AS is_marked,
+      CASE WHEN m.active = 1 AND (COALESCE(m.manually_added, 0) = 1 OR COALESCE(m.correct_streak, 0) < 2) THEN 1 ELSE 0 END AS is_marked,
       m.wrong_count, m.next_review_at
      ${from} ORDER BY ${order} LIMIT ? OFFSET ?`
   ).bind(...values, limit, offset).all<QuestionRow>();
@@ -821,8 +821,9 @@ async function getStats(env: Env, user: User): Promise<Response> {
        FROM attempts WHERE user_id = ?`
     ).bind(user.id),
     env.DB.prepare(
-      `SELECT SUM(active = 1) AS active,
-       SUM(active = 1 AND (next_review_at IS NULL OR datetime(next_review_at) <= datetime('now'))) AS due
+      `SELECT SUM(active = 1 AND (COALESCE(manually_added, 0) = 1 OR COALESCE(correct_streak, 0) < 2)) AS active,
+       SUM(active = 1 AND (COALESCE(manually_added, 0) = 1 OR COALESCE(correct_streak, 0) < 2)
+         AND (next_review_at IS NULL OR datetime(next_review_at) <= datetime('now'))) AS due
        FROM mistakes WHERE user_id = ?`
     ).bind(user.id),
     env.DB.prepare("SELECT COUNT(*) AS count FROM questions WHERE active = 1"),
