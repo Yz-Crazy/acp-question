@@ -519,11 +519,17 @@ async function updateAdminQuestionsStatus(request: Request, env: Env): Promise<R
     if (typeof value !== "string" || !value.trim()) throw new ApiError(400, "题目 ID 格式不正确");
     return value.trim();
   }))];
-  const placeholders = ids.map(() => "?").join(", ");
-  const result = await env.DB.prepare(
-    `UPDATE questions SET active = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`
-  ).bind(body.active ? 1 : 0, ...ids).run();
-  return apiJson({ updated: result.meta.changes ?? ids.length, active: body.active });
+  const statements: D1PreparedStatement[] = [];
+  for (let offset = 0; offset < ids.length; offset += 90) {
+    const chunk = ids.slice(offset, offset + 90);
+    const placeholders = chunk.map(() => "?").join(", ");
+    statements.push(env.DB.prepare(
+      `UPDATE questions SET active = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`
+    ).bind(body.active ? 1 : 0, ...chunk));
+  }
+  const results = await env.DB.batch(statements);
+  const updated = results.reduce((count, result) => count + (result.meta?.changes ?? 0), 0);
+  return apiJson({ updated, active: body.active });
 }
 
 async function updateAdminQuestion(request: Request, env: Env, questionId: string): Promise<Response> {
