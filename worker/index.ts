@@ -510,6 +510,22 @@ async function getAdminQuestions(request: Request, env: Env): Promise<Response> 
   return apiJson({ questions: rows.results.map(mapAdminQuestion), total: total?.count ?? 0 });
 }
 
+async function updateAdminQuestionsStatus(request: Request, env: Env): Promise<Response> {
+  const body = await readJson<{ ids?: unknown; active?: unknown }>(request);
+  if (!Array.isArray(body.ids) || !body.ids.length) throw new ApiError(400, "请选择至少一道题目");
+  if (body.ids.length > 500) throw new ApiError(400, "单次最多更新 500 道题");
+  if (typeof body.active !== "boolean") throw new ApiError(400, "题目状态参数不正确");
+  const ids = [...new Set(body.ids.map((value) => {
+    if (typeof value !== "string" || !value.trim()) throw new ApiError(400, "题目 ID 格式不正确");
+    return value.trim();
+  }))];
+  const placeholders = ids.map(() => "?").join(", ");
+  const result = await env.DB.prepare(
+    `UPDATE questions SET active = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`
+  ).bind(body.active ? 1 : 0, ...ids).run();
+  return apiJson({ updated: result.meta.changes ?? ids.length, active: body.active });
+}
+
 async function updateAdminQuestion(request: Request, env: Env, questionId: string): Promise<Response> {
   const existing = await env.DB.prepare("SELECT id FROM questions WHERE id = ?").bind(questionId).first();
   if (!existing) throw new ApiError(404, "题目不存在");
@@ -1309,6 +1325,7 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     requireAdmin(user);
     if (path === "/api/admin/questions" && method === "GET") return getAdminQuestions(request, env);
     if (path === "/api/admin/questions/import" && method === "POST") return importQuestions(request, env);
+    if (path === "/api/admin/questions/bulk-status" && method === "POST") return updateAdminQuestionsStatus(request, env);
     if (path === "/api/admin/users" && method === "GET") return getAdminUsers(request, env);
     if (path === "/api/admin/registration-codes" && method === "GET") return getRegistrationCodes(env);
     if (path === "/api/admin/registration-codes" && method === "POST") return createRegistrationCode(env, user);

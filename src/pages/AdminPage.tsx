@@ -1,4 +1,4 @@
-import { AlertTriangle, BookMarked, BookOpenCheck, Check, CheckCircle2, Copy, FileCheck2, FileJson, KeyRound, Pencil, Plus, RefreshCw, Save, Search, UploadCloud, UserCheck, Users, UserX, X } from "lucide-react";
+import { AlertTriangle, BookMarked, BookOpenCheck, Check, CheckCircle2, CheckSquare, Copy, FileCheck2, FileJson, KeyRound, Pencil, Plus, RefreshCw, Save, Search, Square, UploadCloud, UserCheck, Users, UserX, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { api, queryString } from "../api";
 import { useAuth } from "../auth";
@@ -36,6 +36,8 @@ function QuestionManagement() {
   const [replaceExisting, setReplaceExisting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(search.trim()), 250);
@@ -47,10 +49,47 @@ function QuestionManagement() {
     try {
       const response = await api<{ questions: AdminQuestion[]; total: number }>(`/api/admin/questions?${queryString({ search: debounced, status, limit: 100 })}`);
       setQuestions(response.questions); setTotal(response.total);
+      setSelectedIds((current) => new Set([...current].filter((id) => response.questions.some((question) => question.id === id))));
     } catch (reason) { setError(reason instanceof Error ? reason.message : "题库加载失败"); }
     finally { setLoading(false); }
   }, [debounced, status]);
   useEffect(() => { void load(); }, [load]);
+
+  const selectedCount = selectedIds.size;
+  const allVisibleSelected = questions.length > 0 && questions.every((question) => selectedIds.has(question.id));
+
+  function toggleQuestion(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllVisible() {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (allVisibleSelected) questions.forEach((question) => next.delete(question.id));
+      else questions.forEach((question) => next.add(question.id));
+      return next;
+    });
+  }
+
+  async function updateSelectedStatus(active: boolean) {
+    if (!selectedCount || updatingStatus) return;
+    const action = active ? "启用" : "停用";
+    if (!window.confirm(`确定${action}选中的 ${selectedCount} 道题吗？`)) return;
+    setUpdatingStatus(true); setError("");
+    try {
+      await api<{ updated: number; active: boolean }>("/api/admin/questions/bulk-status", {
+        method: "POST", body: JSON.stringify({ ids: [...selectedIds], active })
+      });
+      setSelectedIds(new Set());
+      await load();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : `批量${action}失败`); }
+    finally { setUpdatingStatus(false); }
+  }
 
   async function chooseFile(file?: File) {
     if (!file) return;
@@ -94,7 +133,8 @@ function QuestionManagement() {
       <div className="section-heading"><div><p className="eyebrow">题目维护</p><h2>题库共 {total} 道</h2></div><button className="icon-button" type="button" title="刷新题库" onClick={() => void load()}><RefreshCw size={18} /></button></div>
       <div className="admin-toolbar"><div className="compact-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索题干、分类或编号" aria-label="搜索管理题库" /></div><select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="题目状态"><option value="all">全部状态</option><option value="active">使用中</option><option value="inactive">已停用</option></select></div>
       {error ? <ErrorState message={error} retry={() => void load()} /> : loading ? <LoadingState label="正在加载题库" /> : <div className="admin-question-list">
-        {questions.map((question) => <div className={`admin-question-row ${question.active ? "" : "inactive"}`} key={question.id}><span className={`question-state ${question.active ? "active" : ""}`}>{question.active ? "使用中" : "已停用"}</span><span className="admin-question-main"><span><small>{question.type === "single" ? "单选" : "多选"}</small>{question.core && <small className="core-text"><BookMarked size={12} />核心</small>}<small>{question.category}</small>{question.number != null && <small>#{question.number}</small>}</span><strong>{question.question.replaceAll("\n", " ")}</strong></span><button className="icon-button" type="button" title="编辑题目" onClick={() => setEditing(question)}><Pencil size={17} /></button></div>)}
+        {questions.length > 0 && <div className="admin-bulk-toolbar"><button className="button secondary small" type="button" onClick={toggleAllVisible} disabled={updatingStatus} aria-pressed={allVisibleSelected}>{allVisibleSelected ? <CheckSquare size={16} /> : <Square size={16} />}{allVisibleSelected ? "取消全选" : "全选当前列表"}</button><span>已选 {selectedCount} 道</span><button className="button secondary small" type="button" disabled={!selectedCount || updatingStatus} onClick={() => void updateSelectedStatus(true)}>{updatingStatus ? "处理中" : "批量启用"}</button><button className="button danger-text small" type="button" disabled={!selectedCount || updatingStatus} onClick={() => void updateSelectedStatus(false)}>{updatingStatus ? "处理中" : "批量停用"}</button></div>}
+        {questions.map((question) => <div className={`admin-question-row ${question.active ? "" : "inactive"}`} key={question.id}><button className="icon-button question-select-button" type="button" title={selectedIds.has(question.id) ? "取消选择题目" : "选择题目"} aria-label={selectedIds.has(question.id) ? "取消选择题目" : "选择题目"} aria-pressed={selectedIds.has(question.id)} disabled={updatingStatus} onClick={() => toggleQuestion(question.id)}>{selectedIds.has(question.id) ? <CheckSquare size={19} /> : <Square size={19} />}</button><span className={`question-state ${question.active ? "active" : ""}`}>{question.active ? "使用中" : "已停用"}</span><span className="admin-question-main"><span><small>{question.type === "single" ? "单选" : "多选"}</small>{question.core && <small className="core-text"><BookMarked size={12} />核心</small>}<small>{question.category}</small>{question.number != null && <small>#{question.number}</small>}</span><strong>{question.question.replaceAll("\n", " ")}</strong></span><button className="icon-button" type="button" title="编辑题目" onClick={() => setEditing(question)}><Pencil size={17} /></button></div>)}
         {!questions.length && <p className="empty-inline">没有符合条件的题目。</p>}
       </div>}
     </section>
