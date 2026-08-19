@@ -153,7 +153,6 @@ export function QuizPage() {
   }
 
   function goToQuestion(targetIndex: number) {
-    if (!result && selected.length && !window.confirm("当前答案尚未提交，确定切换题目吗？")) return;
     setIndex(targetIndex); setSelected([]); setResult(null); setError(""); setNavigatorOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
